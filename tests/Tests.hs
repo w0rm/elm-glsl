@@ -1,13 +1,13 @@
 module Main where
 
-import Text.ParserCombinators.Parsec hiding (State, parse) -- TODO clean
+import qualified Text.ParserCombinators.Parsec as TPP
 import Text.PrettyPrint.HughesPJClass (prettyShow, Pretty)
 import Test.HUnit
 import Test.Framework (defaultMain)
 import Test.Framework.Providers.HUnit (hUnitTestToTests)
 
-import Language.GLSL.Syntax
-import Language.GLSL.Parser
+import Language.GLSL.Syntax (TranslationUnit, Expr, Declaration, ExternalDeclaration)
+import qualified Language.GLSL.Parser as LGP
 import Language.GLSL.Pretty ()
 
 main :: IO ()
@@ -46,45 +46,45 @@ parsingTests =
 -- (to build only legal ASTs).
 
 parsePrettyId :: TranslationUnit -> Bool
-parsePrettyId e = case pass translationUnit (prettyShow e) of
+parsePrettyId e = case pass LGP.translationUnit (prettyShow e) of
   Left _ -> False
   Right e' -> e == e'
 
 parsePrettyIdExpr :: Expr -> Bool
-parsePrettyIdExpr e = case pass expression (prettyShow e) of
+parsePrettyIdExpr e = case pass LGP.expression (prettyShow e) of
   Left _ -> False
   Right e' -> e == e'
 
 parsePrettyIdDecl :: Declaration -> Bool
-parsePrettyIdDecl e = case pass declaration (prettyShow e) of
+parsePrettyIdDecl e = case pass LGP.declaration (prettyShow e) of
   Left _ -> False
   Right e' -> e == e'
 
-check :: Pretty a => P a -> String -> IO ()
+check :: Pretty a => LGP.P a -> String -> IO ()
 check p str = case pass p str of
   Left err -> print err
   Right ast -> putStrLn $ prettyShow ast
 
 parsePrettyIdFunc :: ExternalDeclaration -> Bool
-parsePrettyIdFunc e = case pass functionDefinition (prettyShow e) of
+parsePrettyIdFunc e = case pass LGP.functionDefinition (prettyShow e) of
   Left _ -> False
   Right e' -> e == e'
 
 expressionsId :: String -> Test
 expressionsId str = TestCase . assertBool ("expressionsId: " ++ str) . parsePrettyIdExpr $ ast
-  where ast = case pass expression str of
+  where ast = case pass LGP.expression str of
           Left _ -> error "does not even parse the original string"
           Right a -> a
 
 declarationsId :: String -> Test
 declarationsId str = TestCase . assertBool ("declarationsId: " ++ str) . parsePrettyIdDecl $ ast
-  where ast = case pass declaration str of
+  where ast = case pass LGP.declaration str of
           Left _ -> error "does not even parse the original string"
           Right a -> a
 
 functionDefinitionsId :: String -> Test
 functionDefinitionsId str = TestCase . assertBool ("functionDefinitionsId: " ++ str) . parsePrettyIdFunc $ ast
-  where ast = case pass functionDefinition str of
+  where ast = case pass LGP.functionDefinition str of
           Left _ -> error "does not even parse the original string"
           Right a -> a
 
@@ -93,8 +93,8 @@ functionDefinitionsId str = TestCase . assertBool ("functionDefinitionsId: " ++ 
 ----------------------------------------------------------------------
 
 -- Just check if the parser passes of fails
-pass :: P a -> String -> Either ParseError a
-pass p = runParser (do {skipMany blank ; r <- p ; eof ; return r}) S "pass"
+pass :: LGP.P a -> String -> Either TPP.ParseError a
+pass p = TPP.runParser (do {TPP.skipMany LGP.blank ; r <- p ; TPP.eof ; return r}) LGP.S "pass"
 
 isRight :: Either a b -> Bool
 isRight (Right _) = True
@@ -103,11 +103,11 @@ isRight (Left _) = False
 isLeft :: Either a b -> Bool
 isLeft = not . isRight
 
-doesParse :: P a -> String -> Test
+doesParse :: LGP.P a -> String -> Test
 doesParse p str =
   TestCase . assertBool ("doesParse: " ++ str) . isRight . pass p $ str
 
-doesNotParse :: P a -> String -> Test
+doesNotParse :: LGP.P a -> String -> Test
 doesNotParse p str =
   TestCase . assertBool ("doesNotParse: " ++ str) . isLeft . pass p $ str
 
@@ -117,11 +117,11 @@ doesNotParse p str =
 
 legalExpressionsTests :: Test
 legalExpressionsTests = TestLabel "legal expressions" $
-  TestList $ map (doesParse expression) testExpressionsTrue
+  TestList $ map (doesParse LGP.expression) testExpressionsTrue
 
 illegalExpressionsTests :: Test
 illegalExpressionsTests = TestLabel "illegal expressions" $
-  TestList $ map (doesNotParse expression) testExpressionsFalse
+  TestList $ map (doesNotParse LGP.expression) testExpressionsFalse
 
 testExpressionsTrue :: [String]
 testExpressionsTrue =
@@ -193,11 +193,11 @@ testExpressionsFalse =
 
 legalDeclarationsTests :: Test
 legalDeclarationsTests = TestLabel "legal declarations" $
-  TestList $ map (doesParse declaration) testDeclarationsTrue
+  TestList $ map (doesParse LGP.declaration) testDeclarationsTrue
 
 illegalDeclarationsTests :: Test
 illegalDeclarationsTests = TestLabel "illegal declarations" $
-  TestList $ map (doesNotParse declaration) testDeclarationsFalse
+  TestList $ map (doesNotParse LGP.declaration) testDeclarationsFalse
 
 testDeclarationsTrue :: [String]
 testDeclarationsTrue =
@@ -398,7 +398,7 @@ testDeclarationsFalse =
 
 legalFunctionDefinitionsTests :: Test
 legalFunctionDefinitionsTests = TestLabel "legal function definition" $
-  TestList $ map (doesParse functionDefinition) testFunctionDefinitionsTrue
+  TestList $ map (doesParse LGP.functionDefinition) testFunctionDefinitionsTrue
 
 testFunctionDefinitionsTrue :: [String]
 testFunctionDefinitionsTrue =
@@ -418,11 +418,11 @@ testFunctionDefinitionsTrue =
 
 legalCommentsTests :: Test
 legalCommentsTests = TestLabel "legal comments" $
-  TestList $ map (doesParse declaration) testCommentsTrue
+  TestList $ map (doesParse LGP.declaration) testCommentsTrue
 
 illegalCommentsTests :: Test
 illegalCommentsTests = TestLabel "illegal comments" $
-  TestList $ map (doesNotParse declaration) testCommentsFalse
+  TestList $ map (doesNotParse LGP.declaration) testCommentsFalse
 
 testCommentsTrue :: [String]
 testCommentsTrue =
@@ -452,7 +452,7 @@ testCommentsFalse =
 
 legalTranslationUnitsTests :: Test
 legalTranslationUnitsTests = TestLabel "legal translation unit" $
-  TestList $ map (doesParse translationUnit) $
+  TestList $ map (doesParse LGP.translationUnit) $
   testDeclarationsTrue ++ testFunctionDefinitionsTrue
 
 ----------------------------------------------------------------------
@@ -461,8 +461,8 @@ legalTranslationUnitsTests = TestLabel "legal translation unit" $
 
 sampleFileTest :: Test
 sampleFileTest = TestLabel "Parse/Pretty glsl/sample-01.glsl test" . TestCase . assert $ do
-  content <- readFile $ "glsl/sample-01.glsl"
-  case parse content of
+  content <- readFile "glsl/sample-01.glsl"
+  case LGP.parse content of
     Left err -> do
       putStrLn $ "parse error: \n" ++ show err
       return False
