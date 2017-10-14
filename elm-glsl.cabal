@@ -42,4 +42,5 @@ Test-Suite tests
                    test-framework-hunit
   ghc-options:     -Wall
   Hs-Source-Dirs:  tests
-  main-is:         Tests.hs
+  main-is:         Main.hs
+  other-modules:   Tests
