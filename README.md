@@ -17,7 +17,10 @@ elm-lang/elm-glsl -- the contents of this repo
 cd elm-lang
 cabal sandbox init
 cabal sandbox add-source elm-compiler
-cd elm-glsl
+cd elm-compiler
+$EDITOR elm-compiler.cabal
+# Expose all modules in `other-modules`
+cd ../elm-glsl
 cabal sandbox init --sandbox ../.cabal-sandbox
 cabal install --only-dependencies --enable-tests
 cabal configure --enable-tests
