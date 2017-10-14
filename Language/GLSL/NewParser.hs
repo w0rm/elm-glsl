@@ -87,6 +87,19 @@ declaration =
           ]
     ]
 
+invariantQualifier :: PH.Parser LGS.InvariantQualifier
+invariantQualifier = do
+  PH.keyword "invariant"
+  return LGS.Invariant
+
+interpolationQualifier :: PH.Parser LGS.InterpolationQualifier
+interpolationQualifier =
+  PH.oneOf
+    [ PH.keyword "smooth" >> return LGS.Smooth
+    , PH.keyword "flat" >> return LGS.Flat
+    , PH.keyword "noperspective" >> return LGS.NoPerspective
+    ]
+
 layoutQualifier :: PH.Parser LGS.LayoutQualifier
 layoutQualifier = do
   PH.keyword "layout"
@@ -108,7 +121,28 @@ typeQualifier = PH.oneOf
   [ do
       s <- storageQualifier
       return $ LGS.TypeQualSto s
-  -- TODO: Add more
+  -- TODO: Storage qualifier can be Nothing
+  , do
+      l <- layoutQualifier
+      s <- storageQualifier
+      return $ LGS.TypeQualLay l (Just s)
+  -- TODO: Storage qualifier can be Nothing
+  , do
+      i <- interpolationQualifier
+      s <- storageQualifier
+      return $ LGS.TypeQualInt i (Just s)
+  , do
+      i <- invariantQualifier
+      PH.oneOf
+        [ do
+            j <- interpolationQualifier
+            s <- storageQualifier
+            return $ LGS.TypeQualInv3 i j s
+        , do
+            s <- storageQualifier
+            return $ LGS.TypeQualInv i (Just s)
+        , return $ LGS.TypeQualInv i Nothing
+        ]
   ]
 
 -- TODO see 4.3 for restrictions
