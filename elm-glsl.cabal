@@ -27,6 +27,7 @@ library
   ghc-options:         -Wall
   exposed-modules:     Language.GLSL,
                        Language.GLSL.Parser,
+                       Language.GLSL.NewParser,
                        Language.GLSL.Pretty,
                        Language.GLSL.Syntax
 
@@ -44,3 +45,4 @@ Test-Suite tests
   Hs-Source-Dirs:  tests
   main-is:         Main.hs
   other-modules:   Tests
+                   NewTests
