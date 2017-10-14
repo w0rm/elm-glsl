@@ -1,17 +1,13 @@
-module Main where
+module Tests (parsingTests) where
 
 import qualified Text.ParserCombinators.Parsec as TPP
 import Text.PrettyPrint.HughesPJClass (prettyShow, Pretty)
-import Test.HUnit
-import Test.Framework (defaultMain)
-import Test.Framework.Providers.HUnit (hUnitTestToTests)
+
+import Test.HUnit (Test(..), assert, assertBool)
 
 import Language.GLSL.Syntax (TranslationUnit, Expr, Declaration, ExternalDeclaration)
 import qualified Language.GLSL.Parser as LGP
 import Language.GLSL.Pretty ()
-
-main :: IO ()
-main = defaultMain . hUnitTestToTests . TestList $ parsingTests
 
 parsingTests :: [Test]
 parsingTests =
