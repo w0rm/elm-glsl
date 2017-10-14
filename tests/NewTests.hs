@@ -10,7 +10,8 @@ import qualified Data.Map as Map
 import qualified Parse.Helpers as PH
 import qualified Reporting.Annotation as RA
 import qualified Reporting.Error.Syntax as RE
-import qualified Reporting.Report as RR
+import qualified Reporting.Report as Report
+import qualified Reporting.Region as Region
 
 import qualified Language.GLSL.NewParser as LGNP
 import qualified Language.GLSL.Syntax as LGS
@@ -50,4 +51,4 @@ sampleFileTest = TestLabel "Parse/Pretty glsl/sample-01.glsl test" . TestCase . 
 
 showError :: RA.Located RE.Error -> Text.Text -> String
 showError (RA.A region err) source =
-  show $ RR.toDoc "<location>" region (RE.toReport Map.empty err) source
+  show $ Report.toDoc (Region.toString region) region (RE.toReport Map.empty err) source
