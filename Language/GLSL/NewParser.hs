@@ -1,15 +1,18 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Language.GLSL.NewParser (parse, translationUnit) where
 
-import Data.Text (Text)
+import qualified Data.Text as Text
+import qualified GHC.Float as Float
 
+import qualified AST.Literal as AL
 import qualified Parse.Helpers as PH
 import qualified Reporting.Annotation as RA
 import qualified Reporting.Error.Syntax as RE
 
 import qualified Language.GLSL.Syntax as LGS
+import qualified Language.GLSL.Primitives as P
 
-parse :: Text -> Either (RA.Located RE.Error) LGS.TranslationUnit
+parse :: Text.Text -> Either (RA.Located RE.Error) LGS.TranslationUnit
 parse = PH.run translationUnit
 
 -- Tokens
@@ -42,7 +45,42 @@ rparen :: PH.Parser ()
 rparen =
   PH.keyword ")"
 
+-- TODO: Use GLSL keywords.
+identifier :: PH.Parser Text.Text
+identifier =
+  PH.lowVar
+
+-- TODO: Preserve decimal/hexadecimal/etc.
+intConstant :: PH.Parser LGS.Expr
+intConstant = do
+  n <- PH.number
+  case n of
+    AL.IntNum i ->
+      return $ LGS.IntConstant LGS.Decimal $ toInteger i
+    _ ->
+      fail "TODO"
+
+floatingConstant :: PH.Parser LGS.Expr
+floatingConstant = do
+  n <- PH.number
+  case n of
+    AL.FloatNum f ->
+      return $ LGS.FloatConstant $ Float.double2Float f
+    _ ->
+      fail "TODO"
+
 -- Parsers
+
+primaryExpression :: PH.Parser LGS.Expr
+primaryExpression =
+  PH.oneOf
+    [ (LGS.Variable . Text.unpack) `fmap` PH.try identifier
+    , intConstant
+    , floatingConstant
+    , PH.keyword "true" >> return (LGS.BoolConstant True)
+    , PH.keyword "false" >> return (LGS.BoolConstant False)
+    -- TODO: between lparen rparen expression
+    ]
 
 translationUnit :: PH.Parser LGS.TranslationUnit
 translationUnit = do
@@ -53,7 +91,7 @@ chompExternalDeclarations :: [LGS.ExternalDeclaration] -> PH.Parser [LGS.Externa
 chompExternalDeclarations decls =
   PH.oneOf
     [ PH.try $ do
-        PH.spaces
+        P.whitespace
         ex <- externalDeclaration
         chompExternalDeclarations (ex:decls)
     , return $ reverse decls
@@ -72,11 +110,11 @@ declaration =
     -- TODO: Add more
     [ do
         PH.keyword "precision"
-        PH.spaces
+        P.whitespace
         q <- precisionQualifier
-        PH.spaces
+        P.whitespace
         s <- typeSpecifierNoPrecision
-        PH.spaces
+        P.whitespace
         semicolon
         return $ LGS.Precision q s
     , do
@@ -103,12 +141,12 @@ interpolationQualifier =
 layoutQualifier :: PH.Parser LGS.LayoutQualifier
 layoutQualifier = do
   PH.keyword "layout"
-  PH.spaces
+  P.whitespace
   lparen
-  PH.spaces
+  P.whitespace
   -- TODO: Separated by comma
   q <- layoutQualifierId
-  PH.spaces
+  P.whitespace
   rparen
   return $ LGS.Layout [q]
 
