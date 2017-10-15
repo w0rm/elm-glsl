@@ -30,6 +30,7 @@ library
                        Language.GLSL.Parser,
                        Language.GLSL.NewParser,
                        Language.GLSL.Pretty,
+                       Language.GLSL.Primitives,
                        Language.GLSL.Syntax
 
 Test-Suite tests

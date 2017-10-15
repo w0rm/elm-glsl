@@ -1,0 +1,43 @@
+diff --git a/elm-compiler.cabal b/elm-compiler.cabal
+index 67a1a8bf..470f1380 100644
+--- a/elm-compiler.cabal
++++ b/elm-compiler.cabal
+@@ -58,9 +58,8 @@ Library
+         Elm.Package,
+         Elm.Utils,
+         Json.Decode,
+-        Json.Encode
++        Json.Encode,
+ 
+-    other-modules:
+         AST.Declaration,
+         AST.Effects,
+         AST.Exposing,
+diff --git a/src/Parse/Helpers.hs b/src/Parse/Helpers.hs
+index e36c536f..3fe973b2 100644
+--- a/src/Parse/Helpers.hs
++++ b/src/Parse/Helpers.hs
+@@ -14,7 +14,7 @@ module Parse.Helpers
+ import qualified Data.Text as Text
+ import Data.Text (Text)
+ 
+-import Parse.Primitives
++import Parse.Primitives hiding (State)
+ import qualified Parse.Primitives as P
+ import qualified Reporting.Annotation as A
+ import qualified Reporting.Error.Syntax as E
+diff --git a/src/Parse/Primitives.hs b/src/Parse/Primitives.hs
+index 0118ec6d..e14dfedc 100644
+--- a/src/Parse/Primitives.hs
++++ b/src/Parse/Primitives.hs
+@@ -1,7 +1,9 @@
+ {-# OPTIONS_GHC -Wall -fno-warn-unused-do-bind #-}
+ {-# LANGUAGE BangPatterns, Rank2Types, UnboxedTuples, OverloadedStrings #-}
+ module Parse.Primitives
+-  ( Parser
++  ( Parser(..)
++  , State(..)
++  , noError
+   , run, runAt
+   , try, deadend, hint, endOfFile
+   , oneOf

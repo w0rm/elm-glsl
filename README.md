@@ -18,15 +18,20 @@ cd elm-lang
 cabal sandbox init
 cabal sandbox add-source elm-compiler
 cd elm-compiler
-$EDITOR elm-compiler.cabal
-# Expose all modules in `other-modules`
+git checkout dev
+git apply ../elm-glsl/elm-compiler.patch
 cd ../elm-glsl
 cabal sandbox init --sandbox ../.cabal-sandbox
 cabal install --only-dependencies --enable-tests
 cabal configure --enable-tests
 cabal test
+```
 
-# TODO:
-# modify elm-lang/elm-compiler/elm-compiler.cabal
-# to expose the parser tools
+## Creating a patch for compiler
+
+```bash
+cd elm-compiler
+git checkout dev
+# Make changes...
+git diff > ../elm-glsl/elm-compiler.patch
 ```
