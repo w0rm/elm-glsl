@@ -142,7 +142,11 @@ identifier =
               PP.copyText array offset (newOffset - offset)
           in
             if Set.member copiedText keywords then
-              eerr (expect row newCol ctx identifierTheories)
+              eerr (expect row newCol ctx [RE.Keyword (Text.append copiedText " is a keyword")])
+            else if Set.member copiedText reservedWords then
+              eerr (expect row newCol ctx [RE.Keyword (Text.append copiedText " is reserved")])
+            else if Text.isInfixOf "__" copiedText then
+              eerr (expect row newCol ctx [RE.Keyword (Text.append copiedText " is reserved (two consecutive underscores)")])
             else
               cok copiedText (PP.State array newOffset newLength indent row newCol ctx) PP.noError
 
