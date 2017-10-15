@@ -9,6 +9,6 @@ import qualified NewTests
 
 main :: IO ()
 main = TF.defaultMain $ concatMap (TFPH.hUnitTestToTests . TH.TestList)
-    [ Tests.parsingTests
-    , NewTests.parsingTests
+    [ NewTests.parsingTests
+    -- , Tests.parsingTests
     ]
