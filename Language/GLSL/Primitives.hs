@@ -36,6 +36,9 @@ eatSpaces array offset length row col =
       0x0020 {-   -} ->
         eatSpaces array (offset + 1) (length - 1) row (col + 1)
 
+      0x0009 {- \t -} ->
+        eatSpaces array (offset + 1) (length - 1) row (col + 1)
+
       0x000A {- \n -} ->
         eatSpaces array (offset + 1) (length - 1) (row + 1) 1
 
@@ -44,9 +47,6 @@ eatSpaces array offset length row col =
 
       0x000D {- \r -} ->
         eatSpaces array (offset + 1) (length - 1) row col
-
-      0x0009 {- \t -} ->
-        Left (RE.ParseError row col RE.Tab)
 
       _ ->
         Right ( offset, length, row, col )

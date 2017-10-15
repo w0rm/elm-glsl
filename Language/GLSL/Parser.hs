@@ -358,7 +358,7 @@ functionCallGeneric = do
     ]
   rparen
   return (i, p)
-  
+
 -- Those productions are pushed inside functionCallGeneric.
 -- functionCallHeaderNoParameters = undefined
 -- functionCallHeaderWithParameters = undefined
@@ -385,7 +385,7 @@ unaryExpression = do
     , operator "-" >> return UnaryNegate
     , operator "!" >> return UnaryNot
     , operator "~" >> return UnaryOneComplement
-    ] 
+    ]
   e <- postfixExpression
   return $ foldr ($) e p
 
@@ -798,7 +798,7 @@ selectionStatement = do
   t <- statement
   f <- optionMaybe (keyword "else" >> statement)
   return $ SelectionStatement c t f
-  
+
 -- inside selectionStatement
 -- selectionRestStatement = undefined
 
@@ -872,7 +872,7 @@ forInitStatement = (expressionStatement >>= return . Left)
 jumpStatement :: P Statement
 jumpStatement = choice
   [ keyword "continue" >> semicolon >> return Continue
-  , keyword "break" >> semicolon >> return Break 
+  , keyword "break" >> semicolon >> return Break
   , try (keyword "return" >> semicolon) >> return (Return Nothing)
   , keyword "return" >> expression >>= \e -> semicolon >> return (Return $ Just e)
   , keyword "discard" >> semicolon >> return Discard

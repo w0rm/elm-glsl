@@ -1,19 +1,88 @@
-{-# LANGUAGE OverloadedStrings #-}
-module Language.GLSL.NewParser (parse, translationUnit) where
+{-# LANGUAGE OverloadedStrings, UnboxedTuples #-}
+module Language.GLSL.NewParser (parse, declaration, translationUnit) where
 
 import qualified Data.Text as Text
+import qualified Data.Text.Unsafe as Text
+import qualified Data.Set as Set
+import qualified Data.Char as Char
 import qualified GHC.Float as Float
 
 import qualified AST.Literal as AL
 import qualified Parse.Helpers as PH
 import qualified Reporting.Annotation as RA
 import qualified Reporting.Error.Syntax as RE
+import qualified Parse.Primitives as PP
 
 import qualified Language.GLSL.Syntax as LGS
 import qualified Language.GLSL.Primitives as P
 
 parse :: Text.Text -> Either (RA.Located RE.Error) LGS.TranslationUnit
 parse = PH.run translationUnit
+
+
+----------------------------------------------------------------------
+-- Reserved words
+----------------------------------------------------------------------
+
+-- List of keywords.
+keywords :: Set.Set Text.Text
+keywords = Set.fromList $ concatMap Text.words
+  [ "attribute const uniform varying"
+  , "layout"
+  , "centroid flat smooth noperspective"
+  , "break continue do for while switch case default"
+  , "if else"
+  , "in out inout"
+  , "float int void bool true false"
+  , "invariant"
+  , "discard return"
+  , "mat2 mat3 mat4"
+  , "mat2x2 mat2x3 mat2x4"
+  , "mat3x2 mat3x3 mat3x4"
+  , "mat4x2 mat4x3 mat4x4"
+  , "vec2 vec3 vec4 ivec2 ivec3 ivec4 bvec2 bvec3 bvec4"
+  , "uint uvec2 uvec3 uvec4"
+  , "lowp mediump highp precision"
+  , "sampler1D sampler2D sampler3D samplerCube"
+  , "sampler1DShadow sampler2DShadow samplerCubeShadow"
+  , "sampler1DArray sampler2DArray"
+  , "sampler1DArrayShadow sampler2DArrayShadow"
+  , "isampler1D isampler2D isampler3D isamplerCube"
+  , "isampler1DArray isampler2DArray"
+  , "usampler1D usampler2D usampler3D usamplerCube"
+  , "usampler1DArray usampler2DArray"
+  , "sampler2DRect sampler2DRectShadow isampler2DRect usampler2DRect"
+  , "samplerBuffer isamplerBuffer usamplerBuffer"
+  , "sampler2DMS isampler2DMS usampler2DMS"
+  , "sampler2DMSArray isampler2DMSArray usampler2DMSArray"
+  , "struct"
+  ]
+
+-- List of keywords reserved for future use.
+reservedWords :: Set.Set Text.Text
+reservedWords = Set.fromList $ concatMap Text.words
+  [ "common partition active"
+  , "asm"
+  , "class union enum typedef template this packed"
+  , "goto"
+  , "inline noinline volatile public static extern external interface"
+  , "long short double half fixed unsigned superp"
+  , "input output"
+  , "hvec2 hvec3 hvec4 dvec2 dvec3 dvec4 fvec2 fvec3 fvec4"
+  , "sampler3DRect"
+  , "filter"
+  , "image1D image2D image3D imageCube"
+  , "iimage1D iimage2D iimage3D iimageCube"
+  , "uimage1D uimage2D uimage3D uimageCube"
+  , "image1DArray image2DArray"
+  , "iimage1DArray iimage2DArray uimage1DArray uimage2DArray"
+  , "image1DShadow image2DShadow"
+  , "image1DArrayShadow image2DArrayShadow"
+  , "imageBuffer iimageBuffer uimageBuffer"
+  , "sizeof cast"
+  , "namespace using"
+  , "row_major"
+  ]
 
 -- Tokens
 
@@ -45,10 +114,40 @@ rparen :: PH.Parser ()
 rparen =
   PH.keyword ")"
 
--- TODO: Use GLSL keywords.
+{-# INLINE expect #-}
+expect :: Int -> Int -> RE.ContextStack -> [RE.Theory] -> RE.ParseError
+expect row col ctx theories =
+  RE.ParseError row col (RE.Theories ctx theories)
+
+identifierTheories :: [RE.Theory]
+identifierTheories =
+  [RE.LowVar, RE.CapVar, RE.Symbol "_"]
+
+--TODO: use a proper theory
 identifier :: PH.Parser Text.Text
 identifier =
-  PH.lowVar
+  PH.Parser $ \(PP.State array offset length indent row col ctx) cok _ _ eerr ->
+    if length == 0 then
+      eerr (expect row col ctx identifierTheories)
+    else
+      let
+        (Text.Iter char size) = PP.peek array offset
+      in
+        if Char.isLower char || Char.isUpper char || char == '_' then
+          let
+            (# newOffset, newLength, newCol #) =
+              PP.varPrimHelp array (offset + size) (length - size) (col + 1)
+
+            copiedText =
+              PP.copyText array offset (newOffset - offset)
+          in
+            if Set.member copiedText keywords then
+              eerr (expect row newCol ctx identifierTheories)
+            else
+              cok copiedText (PP.State array newOffset newLength indent row newCol ctx) PP.noError
+
+        else
+          eerr (expect row col ctx identifierTheories)
 
 -- TODO: Preserve decimal/hexadecimal/etc.
 intConstant :: PH.Parser LGS.Expr
@@ -108,7 +207,14 @@ declaration :: PH.Parser LGS.Declaration
 declaration =
   PH.oneOf
     -- TODO: Add more
-    [ do
+    [ PH.try $ do
+        t <- fullySpecifiedType
+        P.whitespace
+        l <- listOfDeclarations
+        P.whitespace
+        semicolon
+        return $ LGS.InitDeclaration (LGS.TypeDeclarator t) l
+    , do
         PH.keyword "precision"
         P.whitespace
         q <- precisionQualifier
@@ -124,6 +230,20 @@ declaration =
           -- TODO: Add more
           ]
     ]
+
+-- TODO: Parse a list of declatations with initializers
+listOfDeclarations :: PH.Parser [LGS.InitDeclarator]
+listOfDeclarations = do
+  i <- identifier
+  return [LGS.InitDecl (Text.unpack i) Nothing Nothing]
+
+fullySpecifiedType :: PH.Parser LGS.FullType
+fullySpecifiedType = PH.oneOf
+  [ PH.try typeSpecifier >>= return . LGS.FullType Nothing
+  , do q <- typeQualifier
+       s <- typeSpecifier
+       return $ LGS.FullType (Just q) s
+  ]
 
 invariantQualifier :: PH.Parser LGS.InvariantQualifier
 invariantQualifier = do
