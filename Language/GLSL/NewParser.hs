@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings, UnboxedTuples #-}
-module Language.GLSL.NewParser (parse, declaration, translationUnit) where
+module Language.GLSL.NewParser (parse, declaration, functionDefinition, translationUnit) where
 
+import Prelude hiding (length)
 import qualified Data.Text as Text
 import qualified Data.Text.Unsafe as Text
 import qualified Data.Set as Set
@@ -220,9 +221,23 @@ chompExternalDeclarations decls =
 externalDeclaration :: PH.Parser LGS.ExternalDeclaration
 externalDeclaration =
   PH.oneOf
-    -- TODO: Function
-    [ LGS.Declaration `fmap` declaration
+    [ do
+        p <- PH.try functionPrototype
+        P.whitespace
+        PH.oneOf
+          [ semicolon >> return (LGS.FunctionDeclaration p)
+          , fmap (LGS.FunctionDefinition p) compoundStatementNoNewScope
+          ]
+    , LGS.Declaration `fmap` declaration
     ]
+
+-- inside externalDeclaration, used only in tests
+functionDefinition :: PH.Parser LGS.ExternalDeclaration
+functionDefinition = do
+  fp <- functionPrototype
+  P.whitespace
+  cs <- compoundStatementNoNewScope
+  return $ LGS.FunctionDefinition fp cs
 
 declaration :: PH.Parser LGS.Declaration
 declaration =
@@ -282,6 +297,62 @@ listOfDeclarations :: PH.Parser [LGS.InitDeclarator]
 listOfDeclarations =
   P.sepBy singleDeclaration (P.whitespace >> comma >> P.whitespace)
 
+functionPrototype :: PH.Parser LGS.FunctionPrototype
+functionPrototype = do
+  (t, i, p) <- functionDeclarator
+  P.whitespace
+  rparen
+  return $ LGS.FuncProt t (Text.unpack i) p
+
+functionDeclarator :: PH.Parser (LGS.FullType, Text.Text, [LGS.ParameterDeclaration])
+functionDeclarator = do
+  (t, i) <- functionHeader
+  P.whitespace
+  p <- P.sepBy parameterDeclaration (P.whitespace >> comma >> P.whitespace)
+  return (t, i, p)
+
+functionHeader :: PH.Parser (LGS.FullType, Text.Text)
+functionHeader = do
+  t <- fullySpecifiedType
+  P.whitespace
+  i <- identifier
+  P.whitespace
+  lparen
+  P.whitespace
+  return (t, i)
+
+parameterDeclaration :: PH.Parser LGS.ParameterDeclaration
+parameterDeclaration = do
+  tq <- P.optionMaybe parameterTypeQualifier
+  P.whitespace
+  q <- P.optionMaybe parameterQualifier
+  P.whitespace
+  s <- typeSpecifier
+  P.whitespace
+  m <- P.optionMaybe $ do
+    i <- identifier
+    P.whitespace
+    b <- P.optionMaybe $ do
+      lbracket
+      P.whitespace
+      ce <- constantExpression
+      P.whitespace
+      rbracket
+      return ce
+    return (Text.unpack i, b)
+  return $ LGS.ParameterDeclaration tq q s m
+
+parameterQualifier :: PH.Parser LGS.ParameterQualifier
+parameterQualifier =
+  -- "empty" case handled in the caller
+  PH.oneOf
+    [ tryKeyword "inout" LGS.InOutParameter
+    , tryKeyword "in" LGS.InParameter
+    , tryKeyword "out" LGS.OutParameter
+    ]
+  where
+    tryKeyword kw ast = PH.try (PH.keyword kw) >> return ast
+
 singleDeclaration :: PH.Parser LGS.InitDeclarator
 singleDeclaration = do
   i <- identifier
@@ -333,6 +404,9 @@ layoutQualifier = do
 layoutQualifierId :: PH.Parser LGS.LayoutQualifierId
 layoutQualifierId =
   undefined
+
+parameterTypeQualifier :: PH.Parser LGS.ParameterTypeQualifier
+parameterTypeQualifier = PH.keyword "const" >> return LGS.ConstParameter
 
 typeQualifier :: PH.Parser LGS.TypeQualifier
 typeQualifier = PH.oneOf
@@ -542,3 +616,54 @@ structDeclarator = do
         return $ LGS.StructDeclarator (Text.unpack i) (Just e)
     , return $ LGS.StructDeclarator (Text.unpack i) Nothing
     ]
+
+declarationStatement :: PH.Parser LGS.Declaration
+declarationStatement = declaration
+
+statement :: PH.Parser LGS.Statement
+statement =
+  PH.oneOf
+    [ fmap LGS.CompoundStatement compoundStatement
+    , simpleStatement
+    ]
+
+simpleStatement :: PH.Parser LGS.Statement
+simpleStatement =
+  PH.oneOf
+    [ fmap LGS.DeclarationStatement declarationStatement
+    , selectionStatement
+    -- TODO: Add more
+    ]
+
+compoundStatement :: PH.Parser LGS.Compound
+compoundStatement = fmap LGS.Compound $ do
+  lbrace
+  P.whitespace
+  ss <- P.repeat P.zeroOrMore statement
+  P.whitespace
+  rbrace
+  return ss
+
+compoundStatementNoNewScope :: PH.Parser LGS.Compound
+compoundStatementNoNewScope = compoundStatement
+
+selectionStatement :: PH.Parser LGS.Statement
+selectionStatement = do
+  PH.keyword "if"
+  P.whitespace
+  lparen
+  P.whitespace
+  c <- expression
+  rparen
+  P.whitespace
+  t <- statement
+  f <- P.optionMaybe $ do
+    PH.keyword "else"
+    P.whitespace
+    -- TODO: If whitespace does not exist here, `{` is required.
+    statement
+  return $ LGS.SelectionStatement c t f
+
+-- TODO: Implement
+expression :: PH.Parser LGS.Expr
+expression = undefined

@@ -23,6 +23,7 @@ parsingTests =
   [ sampleFileTest
   , legalDeclarationsTests
   , illegalDeclarationsTests
+  , legalFunctionDefinitionsTests
   ]
 
 parsePrettyId :: LGS.TranslationUnit -> Bool
@@ -282,4 +283,24 @@ testDeclarationsFalse =
   , "float a[5][3];"
 -- interpolation qualifier may only preced [centroid]in/out.
 --  , "smooth const int a;"
+  ]
+
+----------------------------------------------------------------------
+-- function definitions
+----------------------------------------------------------------------
+
+legalFunctionDefinitionsTests :: Test
+legalFunctionDefinitionsTests = TestLabel "legal function definition" $
+  TestList $ map (doesParse LGNP.functionDefinition) testFunctionDefinitionsTrue
+
+testFunctionDefinitionsTrue :: [String]
+testFunctionDefinitionsTrue =
+  [ "void main ()\n\
+    \{\n\
+    \}"
+  , "void main ()\n\
+    \{\n\
+    \  if (intensity < 0.0)\n\
+    \    return;\n\
+    \}"
   ]
