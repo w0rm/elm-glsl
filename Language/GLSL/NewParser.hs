@@ -88,31 +88,35 @@ reservedWords = Set.fromList $ concatMap Text.words
 
 semicolon :: PH.Parser ()
 semicolon =
-  PH.keyword ";"
+  PH.symbol ";"
 
 lbrace :: PH.Parser ()
 lbrace =
-  PH.keyword "{"
+  PH.symbol "{"
 
 rbrace :: PH.Parser ()
 rbrace =
-  PH.keyword "}"
+  PH.symbol "}"
 
 lbracket :: PH.Parser ()
 lbracket =
-  PH.keyword "["
+  PH.symbol "["
 
 rbracket :: PH.Parser ()
 rbracket =
-  PH.keyword "]"
+  PH.symbol "]"
 
 lparen :: PH.Parser ()
 lparen =
-  PH.keyword "("
+  PH.symbol "("
 
 rparen :: PH.Parser ()
 rparen =
-  PH.keyword ")"
+  PH.symbol ")"
+
+comma :: PH.Parser ()
+comma =
+  PH.symbol ","
 
 {-# INLINE expect #-}
 expect :: Int -> Int -> RE.ContextStack -> [RE.Theory] -> RE.ParseError
@@ -190,6 +194,14 @@ constantExpression =
   -- TODO: implement
   primaryExpression
 
+initializer :: PH.Parser LGS.Expr
+initializer = assignmentExpression
+
+assignmentExpression :: PH.Parser LGS.Expr
+assignmentExpression =
+  -- TODO: implement
+  primaryExpression
+
 translationUnit :: PH.Parser LGS.TranslationUnit
 translationUnit = do
   ex <- externalDeclaration
@@ -215,7 +227,6 @@ externalDeclaration =
 declaration :: PH.Parser LGS.Declaration
 declaration =
   PH.oneOf
-    -- TODO: Add more
     [ PH.try $ do
         t <- fullySpecifiedType
         P.whitespace
@@ -267,16 +278,29 @@ declaration =
           ]
     ]
 
--- TODO: Parse a list of declatations with initializers
 listOfDeclarations :: PH.Parser [LGS.InitDeclarator]
-listOfDeclarations = do
+listOfDeclarations =
+  P.sepBy singleDeclaration (P.whitespace >> comma >> P.whitespace)
+
+singleDeclaration :: PH.Parser LGS.InitDeclarator
+singleDeclaration = do
   i <- identifier
-  return [LGS.InitDecl (Text.unpack i) Nothing Nothing]
+  P.whitespace
+  m <- P.optionMaybe $ do
+    lbracket
+    P.whitespace
+    o <- P.optionMaybe constantExpression
+    P.whitespace
+    rbracket
+    return o
+  j <- P.optionMaybe $ PH.symbol "=" >> P.whitespace >> initializer
+  return $ LGS.InitDecl (Text.unpack i) m j
 
 fullySpecifiedType :: PH.Parser LGS.FullType
 fullySpecifiedType = PH.oneOf
   [ PH.try typeSpecifier >>= return . LGS.FullType Nothing
   , do q <- typeQualifier
+       P.whitespace
        s <- typeSpecifier
        return $ LGS.FullType (Just q) s
   ]
@@ -317,17 +341,21 @@ typeQualifier = PH.oneOf
       return $ LGS.TypeQualSto s
   , do
       l <- layoutQualifier
+      P.whitespace
       s <- P.optionMaybe storageQualifier
       return $ LGS.TypeQualLay l s
   , do
       i <- interpolationQualifier
+      P.whitespace
       s <- P.optionMaybe storageQualifier
       return $ LGS.TypeQualInt i s
   , do
       i <- invariantQualifier
+      P.whitespace
       PH.oneOf
         [ do
             j <- interpolationQualifier
+            P.whitespace
             s <- storageQualifier
             return $ LGS.TypeQualInv3 i j s
         , do
@@ -345,7 +373,7 @@ storageQualifier =
     , PH.keyword "varying" >> return LGS.Varying -- deprecated
     , PH.keyword "in" >> return LGS.In
     , PH.keyword "out" >> return LGS.Out
-    , PH.keyword "centroid" >> PH.oneOf
+    , PH.keyword "centroid" >> P.whitespace >> PH.oneOf
       [ PH.keyword "varying" >> return LGS.CentroidVarying -- deprecated
       , PH.keyword "in" >> return LGS.CentroidIn
       , PH.keyword "out" >> return LGS.CentroidOut
@@ -358,6 +386,7 @@ typeSpecifier =
   PH.oneOf
     [ do
         q <- PH.try precisionQualifier
+        P.whitespace
         s <- typeSpecifierNoPrecision
         return $ LGS.TypeSpec (Just q) s
     , LGS.TypeSpec Nothing `fmap` typeSpecifierNoPrecision
@@ -367,8 +396,18 @@ typeSpecifierNoPrecision :: PH.Parser LGS.TypeSpecifierNoPrecision
 typeSpecifierNoPrecision = do
   s <- typeSpecifierNonArray
   PH.oneOf
-    [ PH.try (lbracket >> rbracket) >> return (LGS.TypeSpecNoPrecision s (Just Nothing))
-    , lbracket >> constantExpression >>= \c -> rbracket >> return (LGS.TypeSpecNoPrecision s (Just $ Just c))
+    [ PH.try $ do
+        lbracket
+        P.whitespace
+        rbracket
+        return (LGS.TypeSpecNoPrecision s (Just Nothing))
+    , do
+        lbracket
+        P.whitespace
+        c <- constantExpression
+        P.whitespace
+        rbracket
+        return (LGS.TypeSpecNoPrecision s (Just $ Just c))
     , return $ LGS.TypeSpecNoPrecision s Nothing
     ]
 
@@ -466,16 +505,17 @@ structSpecifier = do
   rbrace
   return $ LGS.StructSpecifier (Text.unpack `fmap` i) d
 
--- TODO: Parse a list
 structDeclarationList :: PH.Parser [LGS.Field]
-structDeclarationList =
-  do
-    l <- structDeclaration
-    return [l]
+structDeclarationList = do
+  list <- P.sepBy structDeclaration P.whitespace
+  case list of
+    [] -> PH.deadend [RE.Keyword "Expect struct declaration"]
+    _ -> return list
 
 structDeclaration :: PH.Parser LGS.Field
 structDeclaration = do
   q <- P.optionMaybe typeQualifier
+  P.whitespace
   s <- typeSpecifier
   P.whitespace
   l <- structDeclaratorList
@@ -491,6 +531,7 @@ structDeclaratorList = do
 structDeclarator :: PH.Parser LGS.StructDeclarator
 structDeclarator = do
   i <- identifier
+  P.whitespace
   PH.oneOf
     [ do
         lbracket

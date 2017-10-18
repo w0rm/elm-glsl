@@ -1,6 +1,7 @@
 {-# LANGUAGE BangPatterns, OverloadedStrings #-}
-module Language.GLSL.Primitives (whitespace, optionMaybe) where
+module Language.GLSL.Primitives (whitespace, optionMaybe, sepBy, repeat, oneOrMore, zeroOrMore) where
 
+import Prelude hiding (repeat)
 import qualified Data.Text.Array as Text
 
 import qualified AST.Literal as AL
@@ -11,6 +12,61 @@ import qualified Reporting.Region as RR
 import qualified Reporting.Error.Syntax as RE
 
 import qualified Language.GLSL.Syntax as LGS
+
+
+data Count
+  = Exactly Int
+  | AtLeast Int
+
+oneOrMore :: Count
+oneOrMore = AtLeast 1
+
+zeroOrMore :: Count
+zeroOrMore = AtLeast 0
+
+repeat :: Count -> PH.Parser a -> PH.Parser [a]
+repeat count parser =
+  case count of
+    Exactly n ->
+      repeatExactlyHelp n parser []
+    AtLeast n ->
+      repeatAtLeastHelp n parser []
+
+repeatExactlyHelp :: Int -> PH.Parser a -> [a] -> PH.Parser [a]
+repeatExactlyHelp count parser revItems =
+  if count <= 0 then
+    return $ reverse revItems
+  else do
+    item <- parser
+    repeatExactlyHelp (count - 1) parser (item:revItems)
+    -- TODO: Fail with a better error
+
+repeatAtLeastHelp :: Int -> PH.Parser a -> [a] -> PH.Parser [a]
+repeatAtLeastHelp count parser revItems = do
+    item <- parser
+    PH.oneOf
+      [ repeatAtLeastHelp (count - 1) parser (item:revItems)
+      , if count <= 0 then
+          return $ reverse revItems
+        else
+          fail "sdfasd" -- TODO: Fail with the original error!
+      ]
+
+sepBy :: PH.Parser a -> PH.Parser sep -> PH.Parser [a]
+sepBy parser sep =
+  sepByHelp parser sep []
+
+sepByHelp :: PH.Parser a -> PH.Parser sep -> [a] -> PH.Parser [a]
+sepByHelp parser sep revItems =
+  PH.oneOf
+    [ PH.try $ do
+        item <- parser
+        _ <- sep
+        sepByHelp parser sep (item:revItems)
+    , do item <- parser
+         return $ reverse (item:revItems)
+    , return $ reverse revItems
+    ]
 
 optionMaybe :: PH.Parser a -> PH.Parser (Maybe a)
 optionMaybe parser =
