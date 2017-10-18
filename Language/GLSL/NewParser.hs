@@ -252,27 +252,17 @@ declaration =
               P.whitespace
               rbrace
               P.whitespace
-              m <- PH.oneOf
-                [
-                  do
-                    j <- identifier
-                    P.whitespace
-                    n <- do
-                      lbracket
-                      m <- PH.oneOf
-                        [
-                          do
-                            c <- constantExpression
-                            rbracket
-                            return (Just c)
-                        , rbracket >>= return . \_ -> Nothing
-                        ]
-                      return m
-                    P.whitespace
-                    semicolon
-                    return $ Just (Text.unpack j, Just n)
-                , semicolon >>= return . \_ -> Nothing
-                ]
+              m <- P.optionMaybe $ do
+                j <- identifier
+                P.whitespace
+                n <- P.optionMaybe $ do
+                  lbracket
+                  c <- P.optionMaybe constantExpression
+                  rbracket
+                  P.whitespace
+                  return c
+                return (Text.unpack j, n)
+              semicolon
               return $ LGS.Block q (Text.unpack i) s m
           ]
     ]
@@ -325,16 +315,14 @@ typeQualifier = PH.oneOf
   [ do
       s <- storageQualifier
       return $ LGS.TypeQualSto s
-  -- TODO: Storage qualifier can be Nothing
   , do
       l <- layoutQualifier
-      s <- storageQualifier
-      return $ LGS.TypeQualLay l (Just s)
-  -- TODO: Storage qualifier can be Nothing
+      s <- P.optionMaybe storageQualifier
+      return $ LGS.TypeQualLay l s
   , do
       i <- interpolationQualifier
-      s <- storageQualifier
-      return $ LGS.TypeQualInt i (Just s)
+      s <- P.optionMaybe storageQualifier
+      return $ LGS.TypeQualInt i s
   , do
       i <- invariantQualifier
       PH.oneOf
@@ -343,9 +331,8 @@ typeQualifier = PH.oneOf
             s <- storageQualifier
             return $ LGS.TypeQualInv3 i j s
         , do
-            s <- storageQualifier
-            return $ LGS.TypeQualInv i (Just s)
-        , return $ LGS.TypeQualInv i Nothing
+            s <- P.optionMaybe storageQualifier
+            return $  LGS.TypeQualInv i s
         ]
   ]
 
@@ -470,14 +457,14 @@ structSpecifier :: PH.Parser LGS.TypeSpecifierNonArray
 structSpecifier = do
   PH.keyword "struct"
   P.whitespace
-  i <- identifier
+  i <- P.optionMaybe identifier
   P.whitespace
   lbrace
   P.whitespace
   d <- structDeclarationList
   P.whitespace
   rbrace
-  return $ LGS.StructSpecifier (Just (Text.unpack i)) d
+  return $ LGS.StructSpecifier (Text.unpack `fmap` i) d
 
 -- TODO: Parse a list
 structDeclarationList :: PH.Parser [LGS.Field]
@@ -487,25 +474,14 @@ structDeclarationList =
     return [l]
 
 structDeclaration :: PH.Parser LGS.Field
-structDeclaration =
-  PH.oneOf
-    [ do
-        q <- typeQualifier
-        P.whitespace
-        s <- typeSpecifier
-        P.whitespace
-        l <- structDeclaratorList
-        P.whitespace
-        semicolon
-        return $ LGS.Field (Just q) s l
-    , do
-        s <- typeSpecifier
-        P.whitespace
-        l <- structDeclaratorList
-        P.whitespace
-        semicolon
-        return $ LGS.Field Nothing s l
-    ]
+structDeclaration = do
+  q <- P.optionMaybe typeQualifier
+  s <- typeSpecifier
+  P.whitespace
+  l <- structDeclaratorList
+  P.whitespace
+  semicolon
+  return $ LGS.Field q s l
 
 structDeclaratorList :: PH.Parser [LGS.StructDeclarator]
 structDeclaratorList = do
@@ -519,8 +495,9 @@ structDeclarator = do
     [ do
         lbracket
         P.whitespace
-        e <- constantExpression
+        e <- P.optionMaybe constantExpression
+        P.whitespace
         rbracket
-        return $ LGS.StructDeclarator (Text.unpack i) (Just (Just e))
+        return $ LGS.StructDeclarator (Text.unpack i) (Just e)
     , return $ LGS.StructDeclarator (Text.unpack i) Nothing
     ]
