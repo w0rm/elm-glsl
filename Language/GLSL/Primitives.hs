@@ -1,5 +1,5 @@
 {-# LANGUAGE BangPatterns, OverloadedStrings #-}
-module Language.GLSL.Primitives (whitespace) where
+module Language.GLSL.Primitives (whitespace, optionMaybe) where
 
 import qualified Data.Text.Array as Text
 
@@ -11,6 +11,13 @@ import qualified Reporting.Region as RR
 import qualified Reporting.Error.Syntax as RE
 
 import qualified Language.GLSL.Syntax as LGS
+
+optionMaybe :: PH.Parser a -> PH.Parser (Maybe a)
+optionMaybe parser =
+  PH.oneOf
+    [ fmap Just parser
+    , return Nothing
+    ]
 
 whitespace :: PH.Parser ()
 whitespace =

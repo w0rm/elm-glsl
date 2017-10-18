@@ -142,7 +142,11 @@ identifier =
               PP.copyText array offset (newOffset - offset)
           in
             if Set.member copiedText keywords then
-              eerr (expect row newCol ctx identifierTheories)
+              eerr (expect row newCol ctx [RE.Keyword (Text.append copiedText " is a keyword")])
+            else if Set.member copiedText reservedWords then
+              eerr (expect row newCol ctx [RE.Keyword (Text.append copiedText " is reserved")])
+            else if Text.isInfixOf "__" copiedText then
+              eerr (expect row newCol ctx [RE.Keyword (Text.append copiedText " is reserved (two consecutive underscores)")])
             else
               cok copiedText (PP.State array newOffset newLength indent row newCol ctx) PP.noError
 
@@ -181,6 +185,11 @@ primaryExpression =
     -- TODO: between lparen rparen expression
     ]
 
+constantExpression :: PH.Parser LGS.Expr
+constantExpression =
+  -- TODO: implement
+  primaryExpression
+
 translationUnit :: PH.Parser LGS.TranslationUnit
 translationUnit = do
   ex <- externalDeclaration
@@ -215,6 +224,12 @@ declaration =
         semicolon
         return $ LGS.InitDeclaration (LGS.TypeDeclarator t) l
     , do
+        PH.keyword "invariant"
+        l <- listOfDeclarations
+        P.whitespace
+        semicolon
+        return $ LGS.InitDeclaration LGS.InvariantDeclarator l
+    , do
         PH.keyword "precision"
         P.whitespace
         q <- precisionQualifier
@@ -225,9 +240,30 @@ declaration =
         return $ LGS.Precision q s
     , do
         q <- typeQualifier
+        P.whitespace
         PH.oneOf
           [ semicolon >> return (LGS.TQ q)
-          -- TODO: Add more
+          , do
+              i <- identifier
+              P.whitespace
+              lbrace
+              P.whitespace
+              s <- structDeclarationList
+              P.whitespace
+              rbrace
+              P.whitespace
+              m <- P.optionMaybe $ do
+                j <- identifier
+                P.whitespace
+                n <- P.optionMaybe $ do
+                  lbracket
+                  c <- P.optionMaybe constantExpression
+                  rbracket
+                  P.whitespace
+                  return c
+                return (Text.unpack j, n)
+              semicolon
+              return $ LGS.Block q (Text.unpack i) s m
           ]
     ]
 
@@ -279,16 +315,14 @@ typeQualifier = PH.oneOf
   [ do
       s <- storageQualifier
       return $ LGS.TypeQualSto s
-  -- TODO: Storage qualifier can be Nothing
   , do
       l <- layoutQualifier
-      s <- storageQualifier
-      return $ LGS.TypeQualLay l (Just s)
-  -- TODO: Storage qualifier can be Nothing
+      s <- P.optionMaybe storageQualifier
+      return $ LGS.TypeQualLay l s
   , do
       i <- interpolationQualifier
-      s <- storageQualifier
-      return $ LGS.TypeQualInt i (Just s)
+      s <- P.optionMaybe storageQualifier
+      return $ LGS.TypeQualInt i s
   , do
       i <- invariantQualifier
       PH.oneOf
@@ -297,9 +331,8 @@ typeQualifier = PH.oneOf
             s <- storageQualifier
             return $ LGS.TypeQualInv3 i j s
         , do
-            s <- storageQualifier
-            return $ LGS.TypeQualInv i (Just s)
-        , return $ LGS.TypeQualInv i Nothing
+            s <- P.optionMaybe storageQualifier
+            return $  LGS.TypeQualInv i s
         ]
   ]
 
@@ -334,8 +367,9 @@ typeSpecifierNoPrecision :: PH.Parser LGS.TypeSpecifierNoPrecision
 typeSpecifierNoPrecision = do
   s <- typeSpecifierNonArray
   PH.oneOf
-    -- TODO: Add more
-    [ return $ LGS.TypeSpecNoPrecision s Nothing
+    [ PH.try (lbracket >> rbracket) >> return (LGS.TypeSpecNoPrecision s (Just Nothing))
+    , lbracket >> constantExpression >>= \c -> rbracket >> return (LGS.TypeSpecNoPrecision s (Just $ Just c))
+    , return $ LGS.TypeSpecNoPrecision s Nothing
     ]
 
 -- Basic types, structs, and user-defined types.
@@ -407,9 +441,8 @@ typeSpecifierNonArray =
     , PH.keyword "sampler2DMSArray" >> return LGS.Sampler2DMSArray
     , PH.keyword "isampler2DMSArray" >> return LGS.ISampler2DMSArray
     , PH.keyword "usampler2DMSArray" >> return LGS.USampler2DMSArray
-    -- TODO:
-    -- , structSpecifier
-    -- , identifier >>= return . TypeName -- verify if it is declared
+    , structSpecifier
+    , identifier >>= return . LGS.TypeName . Text.unpack -- verify if it is declared
     ]
 
 precisionQualifier :: PH.Parser LGS.PrecisionQualifier
@@ -418,4 +451,53 @@ precisionQualifier =
     [ PH.keyword "highp" >> return LGS.HighP
     , PH.keyword "mediump" >> return LGS.MediumP
     , PH.keyword "lowp" >> return LGS.LowP
+    ]
+
+structSpecifier :: PH.Parser LGS.TypeSpecifierNonArray
+structSpecifier = do
+  PH.keyword "struct"
+  P.whitespace
+  i <- P.optionMaybe identifier
+  P.whitespace
+  lbrace
+  P.whitespace
+  d <- structDeclarationList
+  P.whitespace
+  rbrace
+  return $ LGS.StructSpecifier (Text.unpack `fmap` i) d
+
+-- TODO: Parse a list
+structDeclarationList :: PH.Parser [LGS.Field]
+structDeclarationList =
+  do
+    l <- structDeclaration
+    return [l]
+
+structDeclaration :: PH.Parser LGS.Field
+structDeclaration = do
+  q <- P.optionMaybe typeQualifier
+  s <- typeSpecifier
+  P.whitespace
+  l <- structDeclaratorList
+  P.whitespace
+  semicolon
+  return $ LGS.Field q s l
+
+structDeclaratorList :: PH.Parser [LGS.StructDeclarator]
+structDeclaratorList = do
+  d <- structDeclarator
+  return $ [d]
+
+structDeclarator :: PH.Parser LGS.StructDeclarator
+structDeclarator = do
+  i <- identifier
+  PH.oneOf
+    [ do
+        lbracket
+        P.whitespace
+        e <- P.optionMaybe constantExpression
+        P.whitespace
+        rbracket
+        return $ LGS.StructDeclarator (Text.unpack i) (Just e)
+    , return $ LGS.StructDeclarator (Text.unpack i) Nothing
     ]
