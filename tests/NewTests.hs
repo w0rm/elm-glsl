@@ -51,7 +51,13 @@ isLeft = not . isRight
 
 doesParse :: PH.Parser a -> String -> Test
 doesParse p str =
-  TestCase . assertBool ("doesParse: " ++ str) . isRight . pass p $ str
+  TestLabel ("doesParse: " ++ str) . TestCase . assert $
+    case pass p str of
+      Right _ ->
+        return True
+      Left err -> do
+        putStrLn $ showError err $ Text.pack str
+        return False
 
 doesNotParse :: PH.Parser a -> String -> Test
 doesNotParse p str =
@@ -277,5 +283,3 @@ testDeclarationsFalse =
 -- interpolation qualifier may only preced [centroid]in/out.
 --  , "smooth const int a;"
   ]
-
-
