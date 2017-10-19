@@ -91,6 +91,10 @@ semicolon :: PH.Parser ()
 semicolon =
   PH.symbol ";"
 
+colon :: PH.Parser ()
+colon =
+  PH.symbol ":"
+
 lbrace :: PH.Parser ()
 lbrace =
   PH.symbol "{"
@@ -629,8 +633,11 @@ statement =
 simpleStatement :: PH.Parser LGS.Statement
 simpleStatement =
   PH.oneOf
-    [ fmap LGS.DeclarationStatement declarationStatement
+    [ LGS.DeclarationStatement <$> declarationStatement
+    -- TODO: expression statment
     , selectionStatement
+    , switchStatement
+    , LGS.CaseLabel <$> caseLabel
     -- TODO: Add more
     ]
 
@@ -657,6 +664,36 @@ selectionStatement = do
     -- TODO: If whitespace does not exist here, `{` is required.
     statement
   return $ LGS.SelectionStatement c t f
+
+switchStatement :: PH.Parser LGS.Statement
+switchStatement = do
+  PH.keyword "switch"
+  P.whitespace
+  lparen
+  P.whitespace
+  e <- expression
+  P.whitespace
+  rparen
+  P.whitespace
+  l <- P.repeating "{" "}" statement
+  return $ LGS.SwitchStatement e l
+
+caseLabel :: PH.Parser LGS.CaseLabel
+caseLabel =
+  PH.oneOf
+    [ do
+        PH.keyword "case"
+        P.whitespace
+        e <- expression
+        P.whitespace
+        colon
+        return $ LGS.Case e
+    , do
+        PH.keyword "default"
+        P.whitespace
+        colon
+        return LGS.Default
+    ]
 
 -- TODO: Implement
 expression :: PH.Parser LGS.Expr
