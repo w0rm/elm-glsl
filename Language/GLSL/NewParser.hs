@@ -272,11 +272,7 @@ declaration =
           , do
               i <- identifier
               P.whitespace
-              lbrace
-              P.whitespace
               s <- structDeclarationList
-              P.whitespace
-              rbrace
               P.whitespace
               m <- P.optionMaybe $ do
                 j <- identifier
@@ -300,15 +296,13 @@ listOfDeclarations =
 functionPrototype :: PH.Parser LGS.FunctionPrototype
 functionPrototype = do
   (t, i, p) <- functionDeclarator
-  P.whitespace
-  rparen
   return $ LGS.FuncProt t (Text.unpack i) p
 
 functionDeclarator :: PH.Parser (LGS.FullType, Text.Text, [LGS.ParameterDeclaration])
 functionDeclarator = do
   (t, i) <- functionHeader
   P.whitespace
-  p <- P.sepBy parameterDeclaration (P.whitespace >> comma >> P.whitespace)
+  p <- P.sequence "(" ")" "," parameterDeclaration
   return (t, i, p)
 
 functionHeader :: PH.Parser (LGS.FullType, Text.Text)
@@ -316,17 +310,18 @@ functionHeader = do
   t <- fullySpecifiedType
   P.whitespace
   i <- identifier
-  P.whitespace
-  lparen
-  P.whitespace
   return (t, i)
 
 parameterDeclaration :: PH.Parser LGS.ParameterDeclaration
 parameterDeclaration = do
-  tq <- P.optionMaybe parameterTypeQualifier
-  P.whitespace
-  q <- P.optionMaybe parameterQualifier
-  P.whitespace
+  tq <- P.optionMaybe $ do
+    ptq <- parameterTypeQualifier
+    P.whitespace
+    return ptq
+  q <- P.optionMaybe $ do
+    pq <- parameterQualifier
+    P.whitespace
+    return pq
   s <- typeSpecifier
   P.whitespace
   m <- P.optionMaybe $ do
@@ -581,16 +576,12 @@ structSpecifier = do
   P.whitespace
   i <- P.optionMaybe identifier
   P.whitespace
-  lbrace
-  P.whitespace
   d <- structDeclarationList
-  P.whitespace
-  rbrace
   return $ LGS.StructSpecifier (Text.unpack `fmap` i) d
 
 structDeclarationList :: PH.Parser [LGS.Field]
 structDeclarationList = do
-  list <- P.sepBy structDeclaration P.whitespace
+  list <- P.repeating "{" "}" structDeclaration
   case list of
     [] -> PH.deadend [RE.Keyword "Expect struct declaration"]
     _ -> return list
@@ -644,13 +635,8 @@ simpleStatement =
     ]
 
 compoundStatement :: PH.Parser LGS.Compound
-compoundStatement = fmap LGS.Compound $ do
-  lbrace
-  P.whitespace
-  ss <- P.repeat P.zeroOrMore statement
-  P.whitespace
-  rbrace
-  return ss
+compoundStatement = LGS.Compound <$>
+  P.repeating "{" "}" statement
 
 compoundStatementNoNewScope :: PH.Parser LGS.Compound
 compoundStatementNoNewScope = compoundStatement
