@@ -392,16 +392,12 @@ layoutQualifier :: PH.Parser LGS.LayoutQualifier
 layoutQualifier = do
   PH.keyword "layout"
   P.whitespace
-  lparen
-  P.whitespace
   q <- layoutQualifierIdList
-  P.whitespace
-  rparen
   return $ LGS.Layout q
 
 layoutQualifierIdList :: PH.Parser [LGS.LayoutQualifierId]
 layoutQualifierIdList =
-  P.sepBy layoutQualifierId (P.whitespace >> comma >> P.whitespace)
+  P.sequence "(" ")" "," layoutQualifierId
 
 layoutQualifierId :: PH.Parser LGS.LayoutQualifierId
 layoutQualifierId = do
