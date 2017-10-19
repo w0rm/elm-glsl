@@ -395,15 +395,24 @@ layoutQualifier = do
   P.whitespace
   lparen
   P.whitespace
-  -- TODO: Separated by comma
-  q <- layoutQualifierId
+  q <- layoutQualifierIdList
   P.whitespace
   rparen
-  return $ LGS.Layout [q]
+  return $ LGS.Layout q
+
+layoutQualifierIdList :: PH.Parser [LGS.LayoutQualifierId]
+layoutQualifierIdList =
+  P.sepBy layoutQualifierId (P.whitespace >> comma >> P.whitespace)
 
 layoutQualifierId :: PH.Parser LGS.LayoutQualifierId
-layoutQualifierId =
-  undefined
+layoutQualifierId = do
+  i <- identifier
+  P.whitespace
+  c <- P.optionMaybe $ do
+    PH.symbol "="
+    P.whitespace
+    intConstant
+  return $ LGS.LayoutQualId (Text.unpack i) c
 
 parameterTypeQualifier :: PH.Parser LGS.ParameterTypeQualifier
 parameterTypeQualifier = PH.keyword "const" >> return LGS.ConstParameter
@@ -598,9 +607,8 @@ structDeclaration = do
   return $ LGS.Field q s l
 
 structDeclaratorList :: PH.Parser [LGS.StructDeclarator]
-structDeclaratorList = do
-  d <- structDeclarator
-  return $ [d]
+structDeclaratorList =
+  P.sepBy structDeclarator (P.whitespace >> comma >> P.whitespace)
 
 structDeclarator :: PH.Parser LGS.StructDeclarator
 structDeclarator = do
