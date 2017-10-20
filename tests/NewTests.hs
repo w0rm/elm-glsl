@@ -21,6 +21,8 @@ import Language.GLSL.Pretty ()
 parsingTests :: [Test]
 parsingTests =
   [ sampleFileTest
+  , legalExpressionsTests
+  , illegalExpressionsTests
   , legalDeclarationsTests
   , illegalDeclarationsTests
   , legalFunctionDefinitionsTests
@@ -79,6 +81,81 @@ showError :: RA.Located RE.Error -> Text.Text -> String
 showError (RA.A region err) source =
   show $ Report.toDoc (Region.toString region) region (RE.toReport Map.empty err) source
 
+----------------------------------------------------------------------
+-- expressions
+----------------------------------------------------------------------
+
+legalExpressionsTests :: Test
+legalExpressionsTests = TestLabel "legal expressions" $
+  TestList $ map (doesParse LGNP.expression) testExpressionsTrue
+
+illegalExpressionsTests :: Test
+illegalExpressionsTests = TestLabel "illegal expressions" $
+  TestList $ map (doesNotParse LGNP.expression) testExpressionsFalse
+
+testExpressionsTrue :: [String]
+testExpressionsTrue =
+  [ "a"
+  , "avoid"
+  , "filters"
+  , "0"
+  , "1"
+  , ".1"
+  , "0x01"
+  , "0xF"
+  , "07"
+  , "a++"
+  , "a--"
+  , "a++--"
+  , "a--++"
+  , "a++++"
+  , "a----"
+  , "++a"
+  , "--a"
+  , "++--a"
+  , "--++a"
+  , "++++a"
+  , "----a"
+  , "a ++"
+  , "+a"
+  , "+ a"
+  , "a + b"
+  , "a + b++"
+  , "a + ++b"
+  , "a + + b"
+  , "a ++ +b"
+  , "a()"
+  , "float()"
+  , "a ()"
+  , "a( )"
+  , "a ( )"
+  , "a.a"
+  , "a.a()"
+  , "a.length()"
+  , "a[1]"
+  , "a[1].x"
+  , "a[1].x()"
+  , "a().b"
+  , "a().b[1]"
+  , "a().b()"
+  , "a.b.c"
+  ]
+
+testExpressionsFalse :: [String]
+testExpressionsFalse =
+  [ "void"
+  , "filter"
+  , ".A"
+  , "08"
+  , "0A"
+  , "+"
+  , "++"
+  , "a+"
+  , "a +"
+  , "a . a" -- TODO should it be allowed ?
+  , "a[]"
+--  , "a[1][2]" -- TODO it is illegal to declare an array of arrays
+  ]
 
 ----------------------------------------------------------------------
 -- declarations

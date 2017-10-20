@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns, OverloadedStrings #-}
+{-# LANGUAGE BangPatterns, DoAndIfThenElse, OverloadedStrings #-}
 module Language.GLSL.Primitives (whitespace, optionMaybe, sepBy, repeat, oneOrMore, zeroOrMore, sequence, repeating) where
 
 import Prelude hiding (repeat, sequence)
@@ -42,21 +42,30 @@ repeatExactlyHelp count parser revItems =
     repeatExactlyHelp (count - 1) parser (item:revItems)
     -- TODO: Fail with a better error
 
+-- TODO: Remove duplication
 repeatAtLeastHelp :: Int -> PH.Parser a -> [a] -> PH.Parser [a]
-repeatAtLeastHelp count parser revItems = do
-    item <- parser
-    PH.oneOf
-      [ repeatAtLeastHelp (count - 1) parser (item:revItems)
-      , if count <= 0 then
+repeatAtLeastHelp count parser revItems =
+  PH.oneOf
+    [ PH.try $ do
+        item <- parser
+        repeatAtLeastHelp (count - 1) parser (item:revItems)
+    , do
+        item <- parser
+        if count <= 0 then
           return $ reverse revItems
         else
-          fail "sdfasd" -- TODO: Fail with the original error!
-      ]
+          fail "Failed in repeatAtLeastHelp" -- TODO: Fail with the original error!
+    , if count <= 0 then
+        return $ reverse revItems
+      else
+        fail "Failed in repeatAtLeastHelp" -- TODO: Fail with the original error!
+    ]
 
 sepBy :: PH.Parser a -> PH.Parser sep -> PH.Parser [a]
 sepBy parser sep =
   sepByHelp parser sep []
 
+-- TODO: Remove duplication
 sepByHelp :: PH.Parser a -> PH.Parser sep -> [a] -> PH.Parser [a]
 sepByHelp parser sep revItems =
   PH.oneOf
