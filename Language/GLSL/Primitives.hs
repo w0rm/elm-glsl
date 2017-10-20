@@ -1,7 +1,8 @@
 {-# LANGUAGE BangPatterns, OverloadedStrings #-}
-module Language.GLSL.Primitives (whitespace, optionMaybe, sepBy, repeat, oneOrMore, zeroOrMore) where
+module Language.GLSL.Primitives (whitespace, optionMaybe, sepBy, repeat, oneOrMore, zeroOrMore, sequence, repeating) where
 
-import Prelude hiding (repeat)
+import Prelude hiding (repeat, sequence)
+import qualified Data.Text as Text
 import qualified Data.Text.Array as Text
 
 import qualified AST.Literal as AL
@@ -73,6 +74,55 @@ optionMaybe parser =
   PH.oneOf
     [ fmap Just parser
     , return Nothing
+    ]
+
+sequence :: Text.Text -> Text.Text -> Text.Text -> PH.Parser a -> PH.Parser [a]
+sequence start end sep parser = do
+  PH.symbol start
+  whitespace
+  PH.oneOf
+    [ PH.symbol end >> return []
+    , do
+        item <- parser
+        whitespace
+        sequenceHelp start end sep parser [item]
+    ]
+
+sequenceHelp :: Text.Text -> Text.Text -> Text.Text -> PH.Parser a -> [a] -> PH.Parser [a]
+sequenceHelp start end sep parser revItems =
+  PH.oneOf
+    [ do
+        PH.symbol end
+        return $ reverse revItems
+    , do
+        PH.symbol sep
+        whitespace
+        item <- parser
+        sequenceHelp start end sep parser (item:revItems)
+    ]
+
+repeating :: Text.Text -> Text.Text -> PH.Parser a -> PH.Parser [a]
+repeating start end parser = do
+  PH.symbol start
+  whitespace
+  PH.oneOf
+    [ PH.symbol end >> return []
+    , do
+        item <- parser
+        whitespace
+        repeatingHelp start end parser [item]
+    ]
+
+repeatingHelp :: Text.Text -> Text.Text -> PH.Parser a -> [a] -> PH.Parser [a]
+repeatingHelp start end parser revItems =
+  PH.oneOf
+    [ do
+        PH.symbol end
+        return $ reverse revItems
+    , do
+        item <- parser
+        whitespace
+        repeatingHelp start end parser (item:revItems)
     ]
 
 whitespace :: PH.Parser ()
