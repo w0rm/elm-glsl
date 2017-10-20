@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, UnboxedTuples #-}
-module Language.GLSL.NewParser (parse, declaration, functionDefinition, translationUnit) where
+module Language.GLSL.NewParser (parse, expression, declaration, functionDefinition, translationUnit) where
 
 import Prelude hiding (length)
 import qualified Data.Text as Text
@@ -123,6 +123,15 @@ comma :: PH.Parser ()
 comma =
   PH.symbol ","
 
+-- TODO: Is this really necessary?
+-- Try to parse a given string, and allow identifier characters
+-- (or anything else) to directly follow.
+operator :: Text.Text -> PH.Parser ()
+operator symbols =
+  PH.try $ do
+    PH.symbol symbols
+    P.whitespace
+
 {-# INLINE expect #-}
 expect :: Int -> Int -> RE.ContextStack -> [RE.Theory] -> RE.ParseError
 expect row col ctx theories =
@@ -191,21 +200,115 @@ primaryExpression =
     , floatingConstant
     , PH.keyword "true" >> return (LGS.BoolConstant True)
     , PH.keyword "false" >> return (LGS.BoolConstant False)
-    -- TODO: between lparen rparen expression
+    , do
+        lparen
+        P.whitespace
+        e <- expression
+        P.whitespace
+        rparen
+        return e
     ]
+
+postfixExpression :: PH.Parser LGS.Expr
+postfixExpression = do
+  e <- PH.oneOf
+    [ PH.try $ do
+        (i, p) <- functionCallGeneric
+        return $ LGS.FunctionCall i p
+    , primaryExpression
+    ]
+  p <- P.repeat P.zeroOrMore $ PH.oneOf
+    [ do
+        lbracket
+        P.whitespace
+        i <- integerExpression
+        P.whitespace
+        rbracket
+        return $ flip LGS.Bracket i
+    , dotFunctionCallGeneric
+    , dotFieldSelection
+    , operator "++" >> return LGS.PostInc
+    , operator "--" >> return LGS.PostDec
+    ]
+  return $ foldl (flip ($)) e p
+
+dotFunctionCallGeneric :: PH.Parser (LGS.Expr -> LGS.Expr)
+dotFunctionCallGeneric = do
+  (i, p) <- PH.try $ do
+    PH.symbol "."
+    functionCallGeneric
+  P.whitespace
+  return $ \e -> LGS.MethodCall e i p
+
+dotFieldSelection :: PH.Parser (LGS.Expr -> LGS.Expr)
+dotFieldSelection = do
+  -- TODO: Is this try necessary?
+  i <- PH.try $ do
+    PH.symbol "."
+    identifier
+  return $ flip LGS.FieldSelection (Text.unpack i)
+
+integerExpression :: PH.Parser LGS.Expr
+integerExpression = expression
+
+functionCallGeneric :: PH.Parser (LGS.FunctionIdentifier, LGS.Parameters)
+functionCallGeneric = do
+  i <- functionCallHeader
+  P.whitespace
+  p <- PH.oneOf
+    [ PH.keyword "void" >> return LGS.ParamVoid
+    , LGS.Params <$> P.sepBy assignmentExpression (P.whitespace >> comma >> P.whitespace)
+    ]
+  P.whitespace
+  rparen
+  return (i, p)
+
+functionCallHeader :: PH.Parser LGS.FunctionIdentifier
+functionCallHeader = do
+  i <- functionIdentifier
+  P.whitespace
+  lparen
+  return i
+
+functionIdentifier :: PH.Parser LGS.FunctionIdentifier
+functionIdentifier =
+  PH.oneOf
+    [ LGS.FuncId . Text.unpack <$> PH.try identifier
+    , LGS.FuncIdTypeSpec <$> typeSpecifier -- TODO if the 'identifier' is declared as a type, should be this case
+    -- no need for fieldSelection
+    ]
+
+unaryExpression :: PH.Parser LGS.Expr
+unaryExpression = do
+  p <- P.repeat P.zeroOrMore $ PH.oneOf
+    [ operator "++" >> return LGS.PreInc
+    , operator "--" >> return LGS.PreDec
+    , operator "+" >> return LGS.UnaryPlus
+    , operator "-" >> return LGS.UnaryNegate
+    , operator "!" >> return LGS.UnaryNot
+    , operator "~" >> return LGS.UnaryOneComplement
+    ]
+  e <- postfixExpression
+  return $ foldr ($) e p
+
+-- TODO: Implement
+conditionalExpression :: PH.Parser LGS.Expr
+conditionalExpression =
+  unaryExpression
 
 constantExpression :: PH.Parser LGS.Expr
 constantExpression =
-  -- TODO: implement
-  primaryExpression
+  conditionalExpression
 
-initializer :: PH.Parser LGS.Expr
-initializer = assignmentExpression
-
+-- TODO: implement
 assignmentExpression :: PH.Parser LGS.Expr
 assignmentExpression =
-  -- TODO: implement
-  primaryExpression
+  conditionalExpression
+
+-- TODO: Implement
+expression :: PH.Parser LGS.Expr
+expression =
+  assignmentExpression
 
 translationUnit :: PH.Parser LGS.TranslationUnit
 translationUnit = do
@@ -283,7 +386,11 @@ declaration =
                 P.whitespace
                 n <- P.optionMaybe $ do
                   lbracket
-                  c <- P.optionMaybe constantExpression
+                  P.whitespace
+                  c <- P.optionMaybe $ do
+                    ce <- constantExpression
+                    P.whitespace
+                    return ce
                   rbracket
                   P.whitespace
                   return c
@@ -616,6 +723,9 @@ structDeclarator = do
     , return $ LGS.StructDeclarator (Text.unpack i) Nothing
     ]
 
+initializer :: PH.Parser LGS.Expr
+initializer = assignmentExpression
+
 declarationStatement :: PH.Parser LGS.Declaration
 declarationStatement = declaration
 
@@ -690,7 +800,3 @@ caseLabel =
         colon
         return LGS.Default
     ]
-
--- TODO: Implement
-expression :: PH.Parser LGS.Expr
-expression = undefined
