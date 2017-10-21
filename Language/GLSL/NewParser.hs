@@ -163,24 +163,14 @@ identifier =
         else
           eerr (expect row col ctx identifierTheories)
 
--- TODO: Preserve decimal/hexadecimal/etc.
 intConstant :: PH.Parser LGS.Expr
-intConstant = PH.try $ do
-  n <- PH.number
+intConstant = do
+  n <- P.number
   case n of
-    AL.IntNum i ->
-      return $ LGS.IntConstant LGS.Decimal $ toInteger i
+    LGS.IntConstant _ _ ->
+      return n
     _ ->
       PH.deadend [RE.Keyword "Expected integer"]
-
-floatingConstant :: PH.Parser LGS.Expr
-floatingConstant = PH.try $ do
-  n <- PH.number
-  case n of
-    AL.FloatNum f ->
-      return $ LGS.FloatConstant $ Float.double2Float f
-    _ ->
-      PH.deadend [RE.Keyword "Expected float"]
 
 ----------------------------------------------------------------------
 -- Tables for buildExpressionParser
@@ -281,8 +271,7 @@ primaryExpression :: PH.Parser LGS.Expr
 primaryExpression =
   PH.oneOf
     [ (LGS.Variable . Text.unpack) `fmap` PH.try identifier
-    , intConstant
-    , floatingConstant
+    , P.number
     , PH.keyword "true" >> return (LGS.BoolConstant True)
     , PH.keyword "false" >> return (LGS.BoolConstant False)
     , do

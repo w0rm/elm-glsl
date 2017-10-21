@@ -1,6 +1,7 @@
-{-# LANGUAGE BangPatterns, DoAndIfThenElse, OverloadedStrings #-}
+{-# LANGUAGE BangPatterns, DoAndIfThenElse, OverloadedStrings, UnboxedTuples #-}
 module Language.GLSL.Primitives
   ( whitespace
+  , number
   , optionMaybe
   , sepBy
   , repeat
@@ -19,11 +20,14 @@ import Prelude hiding (repeat, sequence, length)
 import Data.Monoid ((<>))
 import qualified Data.Text as Text
 import qualified Data.Text.Array as Text
+import qualified Data.Text.Internal as Text
+import qualified Data.Char as Char
+import GHC.Word (Word16)
 
 import qualified Parse.Helpers as PH
 import qualified Parse.Primitives as PP
 import qualified Reporting.Error.Syntax as RE
-
+import qualified Language.GLSL.Syntax as LGS
 
 data Count
   = Exactly Int
@@ -265,9 +269,7 @@ eatMultiCommentHelp array offset length row col =
 
         eatMultiCommentHelp array (offset + 2) (length - 2) row (col + 1)
 
-
 -- EXPRESSION
-
 
 data Assoc
   = AssocNone
@@ -372,3 +374,303 @@ splitOp (Infix op assoc) (rassoc, lassoc, nassoc) =
       (rassoc, op:lassoc, nassoc)
     AssocRight ->
       (op:rassoc, lassoc, nassoc)
+
+-- NUMBERS
+
+number :: PH.Parser LGS.Expr
+number =
+  PH.Parser $ \(PP.State array offset length indent row col ctx) cok cerr _ eerr ->
+    if length == 0 then
+      eerr PH.noError
+
+    else
+      let
+        !word = Text.unsafeIndex array offset
+      in
+        if not (isDigit word) && not (word == 0x002E {- . -}) then
+          eerr PH.noError
+
+        else
+          let
+            chompResults =
+              if word == 0x0030 {- 0 -} then
+                chompZero array offset (offset + 1) (length - 1)
+              else if word == 0x002E {- . -} then
+                chompFraction array offset (offset + 1) (length - 1)
+              else
+                chompInt array offset (offset + 1) (length - 1)
+          in
+            case chompResults of
+              Left (newOffset, problem) ->
+                cerr (RE.ParseError row (col + (newOffset - offset)) problem)
+
+              Right (newOffset, newLength, literal) ->
+                if isDirtyEnd array newOffset newLength then
+                  cerr (RE.ParseError row (col + (newOffset - offset)) RE.BadNumberEnd)
+
+                else
+                  cok
+                    literal
+                    (PP.State array newOffset newLength indent row (col + (newOffset - offset)) ctx)
+                    PH.noError
+
+isDirtyEnd :: Text.Array -> Int -> Int -> Bool
+isDirtyEnd array offset length =
+  if length == 0 then
+    False
+  else
+    let
+      !char = PP.peekChar array offset
+    in
+      Char.isAlpha char || char == '_'
+
+chompInt :: Text.Array -> Int -> Int -> Int -> Either (Int, RE.Problem) (Int, Int, LGS.Expr)
+chompInt array startOffset offset length =
+  if length == 0 then
+    Right ( offset, length, readInt LGS.Decimal array startOffset offset )
+  else
+    let
+      !word = Text.unsafeIndex array offset
+    in
+      if isDigit word then
+        chompInt array startOffset (offset + 1) (length - 1)
+      else if word == 0x002E {- . -} then
+        chompFraction array startOffset (offset + 1) (length - 1)
+      else if word == 0x0065 {- e -} || word == 0x0045 {- E -} then
+        chompExponent array startOffset (offset + 1) (length - 1)
+      else if word == 0x0055 {- U -} || word == 0x0075 {- u -} then
+        Right ( offset + 1, length - 1, readInt LGS.Decimal array startOffset offset )
+      else
+        Right ( offset, length, readInt LGS.Decimal array startOffset offset )
+
+chompFraction :: Text.Array -> Int -> Int -> Int -> Either (Int, RE.Problem) (Int, Int, LGS.Expr)
+chompFraction array startOffset offset length =
+  if length == 0 then
+    Right (offset, length, readFloat array startOffset offset)
+  else
+    let
+      !word = Text.unsafeIndex array offset
+    in
+      if isDigit word then
+        chompFractionHelp array startOffset (offset + 1) (length - 1)
+      else if word == 0x0065 {- e -} || word == 0x0045 {- E -} then
+        chompExponent array startOffset (offset + 1) (length - 1)
+      else if word == 0x0066 {- f -} || word == 0x0046 {- F -} then
+        Right (offset + 1, length - 1, readFloat array startOffset offset)
+      else
+        Right (offset, length, readFloat array startOffset offset)
+
+chompFractionHelp :: Text.Array -> Int -> Int -> Int -> Either (Int, RE.Problem) (Int, Int, LGS.Expr)
+chompFractionHelp array startOffset offset length =
+  if length == 0 then
+    Right (offset, length, readFloat array startOffset offset)
+  else
+    let
+      !word = Text.unsafeIndex array offset
+    in
+      if isDigit word then
+        chompFractionHelp array startOffset (offset + 1) (length - 1)
+      else if word == 0x0065 {- e -} || word == 0x0045 {- E -} then
+        chompExponent array startOffset (offset + 1) (length - 1)
+      else if word == 0x0066 {- f -} || word == 0x0046 {- F -} then
+        Right (offset + 1, length - 1, readFloat array startOffset offset)
+      else
+        Right (offset, length, readFloat array startOffset offset)
+
+
+chompExponent :: Text.Array -> Int -> Int -> Int -> Either (Int, RE.Problem) (Int, Int, LGS.Expr)
+chompExponent array startOffset offset length =
+  if length == 0 then
+    Right (offset, length, readFloat array startOffset offset)
+  else
+    let
+      !word = Text.unsafeIndex array offset
+    in
+      if isDigit word then
+        chompExponentHelp array startOffset (offset + 1) (length - 1)
+
+      else if word == 0x002B {- + -} || word == 0x002D {- - -} then
+
+        if length > 1 && isDigit (Text.unsafeIndex array (offset + 1)) then
+          chompExponentHelp array startOffset (offset + 2) (length - 2)
+        else
+          Left (offset, RE.BadNumberExp)
+
+      else
+        Left (offset, RE.BadNumberExp)
+
+
+chompExponentHelp :: Text.Array -> Int -> Int -> Int -> Either (Int, RE.Problem) (Int, Int, LGS.Expr)
+chompExponentHelp array startOffset offset length =
+  if length == 0 then
+    Right (offset, length, readFloat array startOffset offset)
+  else
+    let
+      !word = Text.unsafeIndex array offset
+    in
+      if isDigit word then
+        chompExponentHelp array startOffset (offset + 1) (length - 1)
+      else if word == 0x0066 {- f -} || word == 0x0046 {- F -} then
+        Right (offset + 1, length - 1, readFloat array startOffset offset)
+      else
+        Right (offset, length, readFloat array startOffset offset)
+
+
+chompZero :: Text.Array -> Int -> Int -> Int -> Either (Int, RE.Problem) (Int, Int, LGS.Expr)
+chompZero array startOffset offset length =
+  if length == 0 then
+    Right ( offset, length, LGS.IntConstant LGS.Decimal 0 )
+  else
+    let
+      !word = Text.unsafeIndex array offset
+    in
+      if word == 0x0078 {- x -} || word == 0x0058 {- X -} then
+        chompHexNumber array (offset + 1) (length - 1)
+
+      else if word == 0x002E {- . -} then
+        chompFraction array startOffset (offset + 1) (length - 1)
+
+      else if isDigit word then
+        chompOctNumber array offset length
+
+      else
+        Right ( offset, length, LGS.IntConstant LGS.Decimal 0 )
+
+
+chompHexNumber :: Text.Array -> Int -> Int -> Either (Int, RE.Problem) (Int, Int, LGS.Expr)
+chompHexNumber array offset length =
+  let
+    (# newOffset, newLength, hexNumber #) =
+      chompHex array offset length
+  in
+  if hexNumber == -1 then
+    Left ( newOffset, RE.BadNumberHex )
+  else
+    Right ( newOffset, newLength, LGS.IntConstant LGS.Hexadecimal $ toInteger $ hexNumber )
+
+
+chompOctNumber :: Text.Array -> Int -> Int -> Either (Int, RE.Problem) (Int, Int, LGS.Expr)
+chompOctNumber array offset length =
+  let
+    (# newOffset, newLength, octNumber #) =
+      chompOct array offset length
+  in
+  if octNumber == -1 then
+    Left ( newOffset, RE.BadNumberHex )
+  else
+    Right ( newOffset, newLength, LGS.IntConstant LGS.Octal $ toInteger $ octNumber )
+
+
+-- NUMBER HELPERS
+
+
+{-# INLINE isDigit #-}
+isDigit :: Word16 -> Bool
+isDigit word =
+  word <= 0x0039 {- 9 -} && word >= 0x0030 {- 0 -}
+
+
+{-# INLINE readInt #-}
+readInt :: LGS.IntConstantKind -> Text.Array -> Int -> Int -> LGS.Expr
+readInt constantKind array startOffset endOffset =
+  LGS.IntConstant constantKind $ read $ Text.unpack $
+    Text.Text array startOffset (endOffset - startOffset)
+
+
+{-# INLINE readFloat #-}
+readFloat :: Text.Array -> Int -> Int -> LGS.Expr
+readFloat array startOffset endOffset =
+  LGS.FloatConstant $ read $ Text.unpack $
+    Text.Text array startOffset (endOffset - startOffset)
+
+
+
+-- CHOMP HEX
+
+
+-- Return -1 if it has NO digits
+-- Return -2 if it has BAD digits
+
+{-# INLINE chompHex #-}
+chompHex :: Text.Array -> Int -> Int -> (# Int, Int, Int #)
+chompHex array offset length =
+  chompHexHelp array offset length (-1) 0
+
+
+chompHexHelp :: Text.Array -> Int -> Int -> Int -> Int -> (# Int, Int, Int #)
+chompHexHelp array offset length finalNumber hexNumber =
+  if length == 0 then
+    (# offset, length, finalNumber #)
+  else
+    let
+      !newNumber =
+        stepHex (Text.unsafeIndex array offset) hexNumber
+    in
+      if newNumber < 0 then
+        if newNumber == -3 then -- ends with U
+          (# offset + 1, length - 1, finalNumber #)
+        else
+          (# offset, length, if newNumber == -1 then finalNumber else -2 #)
+      else
+        chompHexHelp array (offset + 1) (length - 1) newNumber newNumber
+
+
+{-# INLINE stepHex #-}
+stepHex :: Word16 -> Int -> Int
+stepHex word hexNumber =
+  if word <= 0x0039 {- 9 -} && word >= 0x0030 {- 0 -} then
+    16 * hexNumber + fromIntegral (word - 0x0030 {- 0 -})
+
+  else if word <= 0x0066 {- f -} && word >= 0x0061 {- a -} then
+    16 * hexNumber + 10 + fromIntegral (word - 0x0061 {- a -})
+
+  else if word <= 0x0046 {- F -} && word >= 0x0041 {- A -} then
+    16 * hexNumber + 10 + fromIntegral (word - 0x0041 {- A -})
+
+  else if word == 0x0055 {- U -} || word == 0x0075 {- u -} then
+    -3
+
+  else
+    -1
+
+
+-- CHOMP OCT
+
+-- Return -1 if it has NO digits
+-- Return -2 if it has BAD digits
+
+{-# INLINE chompOct #-}
+chompOct :: Text.Array -> Int -> Int -> (# Int, Int, Int #)
+chompOct array offset length =
+  chompOctHelp array offset length (-1) 0
+
+
+chompOctHelp :: Text.Array -> Int -> Int -> Int -> Int -> (# Int, Int, Int #)
+chompOctHelp array offset length finalNumber octNumber =
+  if length == 0 then
+    (# offset, length, finalNumber #)
+  else
+    let
+      !newNumber =
+        stepOct (Text.unsafeIndex array offset) octNumber
+    in
+    if newNumber < 0 then
+      if newNumber == -3 then -- ends with U
+        (# offset + 1, length - 1, finalNumber #)
+      else
+        (# offset, length, if newNumber == -1 then finalNumber else -2 #)
+    else
+      chompOctHelp array (offset + 1) (length - 1) newNumber newNumber
+
+
+{-# INLINE stepOct #-}
+stepOct :: Word16 -> Int -> Int
+stepOct word octNumber =
+  if word <= 0x0037 {- 7 -} && word >= 0x0030 {- 0 -} then
+    8 * octNumber + fromIntegral (word - 0x0030 {- 0 -})
+
+  else if word == 0x0055 {- U -} || word == 0x0075 {- u -} then
+    -3
+
+  else
+    -1
