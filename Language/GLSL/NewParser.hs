@@ -95,14 +95,6 @@ colon :: PH.Parser ()
 colon =
   PH.symbol ":"
 
-lbrace :: PH.Parser ()
-lbrace =
-  PH.symbol "{"
-
-rbrace :: PH.Parser ()
-rbrace =
-  PH.symbol "}"
-
 lbracket :: PH.Parser ()
 lbracket =
   PH.symbol "["
@@ -291,10 +283,24 @@ unaryExpression = do
   e <- postfixExpression
   return $ foldr ($) e p
 
--- TODO: Implement
 conditionalExpression :: PH.Parser LGS.Expr
-conditionalExpression =
-  unaryExpression
+conditionalExpression = do
+  loe <- unaryExpression
+  P.whitespace
+  ter <- P.optionMaybe $ do
+    PH.symbol "?"
+    P.whitespace
+    e <- expression
+    P.whitespace
+    PH.symbol ":"
+    P.whitespace
+    a <- assignmentExpression
+    return (e, a)
+  case ter of
+    Nothing ->
+      return loe
+    Just (e, a) ->
+      return $ LGS.Selection loe e a
 
 constantExpression :: PH.Parser LGS.Expr
 constantExpression =
@@ -475,7 +481,7 @@ singleDeclaration = do
 
 fullySpecifiedType :: PH.Parser LGS.FullType
 fullySpecifiedType = PH.oneOf
-  [ PH.try typeSpecifier >>= return . LGS.FullType Nothing
+  [ LGS.FullType Nothing <$> PH.try typeSpecifier
   , do q <- typeQualifier
        P.whitespace
        s <- typeSpecifier
@@ -666,7 +672,7 @@ typeSpecifierNonArray =
     , PH.keyword "isampler2DMSArray" >> return LGS.ISampler2DMSArray
     , PH.keyword "usampler2DMSArray" >> return LGS.USampler2DMSArray
     , structSpecifier
-    , identifier >>= return . LGS.TypeName . Text.unpack -- verify if it is declared
+    , LGS.TypeName . Text.unpack <$> identifier  -- verify if it is declared
     ]
 
 precisionQualifier :: PH.Parser LGS.PrecisionQualifier

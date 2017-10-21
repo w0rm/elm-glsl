@@ -139,6 +139,9 @@ testExpressionsTrue =
   , "a().b[1]"
   , "a().b()"
   , "a.b.c"
+  , "a ? 1 : 2"
+  , "a?1:2"
+  , "(a) ? (1) : (2)"
   ]
 
 testExpressionsFalse :: [String]
