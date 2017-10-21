@@ -26,6 +26,7 @@ parsingTests =
   , legalDeclarationsTests
   , illegalDeclarationsTests
   , legalFunctionDefinitionsTests
+  , legalNumberTests
   ]
 
 parsePrettyId :: LGS.TranslationUnit -> Bool
@@ -385,4 +386,34 @@ testFunctionDefinitionsTrue =
     \  if (intensity < 0.0)\n\
     \    return;\n\
     \}"
+  ]
+
+----------------------------------------------------------------------
+-- numbers
+----------------------------------------------------------------------
+
+legalNumberTests :: Test
+legalNumberTests = TestLabel "legal number" $
+  TestList $ map (doesParse P.number) testNumbersTrue
+
+testNumbersTrue :: [String]
+testNumbersTrue =
+  [ "23"
+  , "23u"
+  , "0xA1"
+  , "0xA1u"
+  , "0x07u"
+  , "1.0"
+  , "1.0f"
+  , "1."
+  , "1.f"
+  , ".0"
+  , "1e1"
+  , "1.0e1"
+  , "1.e1"
+  , "1.e1f"
+  , "1.0e-1"
+  , "1.0e+1"
+  , "1.0e+1f"
+  , "1.0e+1F"
   ]
