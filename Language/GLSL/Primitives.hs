@@ -1,18 +1,13 @@
 {-# LANGUAGE BangPatterns, DoAndIfThenElse, OverloadedStrings #-}
 module Language.GLSL.Primitives (whitespace, optionMaybe, sepBy, repeat, oneOrMore, zeroOrMore, sequence, repeating) where
 
-import Prelude hiding (repeat, sequence)
+import Prelude hiding (repeat, sequence, length)
 import qualified Data.Text as Text
 import qualified Data.Text.Array as Text
 
-import qualified AST.Literal as AL
 import qualified Parse.Helpers as PH
 import qualified Parse.Primitives as PP
-import qualified Reporting.Annotation as RA
-import qualified Reporting.Region as RR
 import qualified Reporting.Error.Syntax as RE
-
-import qualified Language.GLSL.Syntax as LGS
 
 
 data Count
@@ -52,7 +47,7 @@ repeatAtLeastHelp count parser revItems =
     , do
         item <- parser
         if count <= 0 then
-          return $ reverse revItems
+          return $ reverse (item:revItems)
         else
           fail "Failed in repeatAtLeastHelp" -- TODO: Fail with the original error!
     , if count <= 0 then
