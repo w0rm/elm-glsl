@@ -387,7 +387,7 @@ number =
       let
         !word = Text.unsafeIndex array offset
       in
-        if not (isDigit word) then
+        if not (isDigit word) && not (word == 0x002E {- . -}) then
           eerr PH.noError
 
         else
