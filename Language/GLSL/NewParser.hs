@@ -165,24 +165,117 @@ identifier =
 
 -- TODO: Preserve decimal/hexadecimal/etc.
 intConstant :: PH.Parser LGS.Expr
-intConstant = do
+intConstant = PH.try $ do
   n <- PH.number
   case n of
     AL.IntNum i ->
       return $ LGS.IntConstant LGS.Decimal $ toInteger i
     _ ->
-      fail "TODO"
+      PH.deadend [RE.Keyword "Expected integer"]
 
 floatingConstant :: PH.Parser LGS.Expr
-floatingConstant = do
+floatingConstant = PH.try $ do
   n <- PH.number
   case n of
     AL.FloatNum f ->
       return $ LGS.FloatConstant $ Float.double2Float f
     _ ->
-      fail "TODO"
+      PH.deadend [RE.Keyword "Expected float"]
 
--- Parsers
+----------------------------------------------------------------------
+-- Tables for buildExpressionParser
+----------------------------------------------------------------------
+
+infixLeft :: Text.Text -> (a -> a -> a) -> P.Operator a
+infixLeft s r =
+  let
+    parser = do
+      PH.try $ do
+        P.whitespace
+        PH.symbol s
+        P.whitespace
+      return r
+  in
+    P.Infix parser P.AssocLeft
+
+infixLeft' :: Text.Text -> (a -> a -> a) -> P.Operator a
+infixLeft' s r =
+  let
+    parser = do
+      PH.try $ do
+        P.whitespace
+        PH.symbol s
+        P.notFollowedBy $ PH.symbol "="
+        P.whitespace
+      return r
+  in
+    P.Infix parser P.AssocLeft
+
+infixLeft'' :: Text.Text -> (a -> a -> a) -> P.Operator a
+infixLeft'' c r =
+  let
+    parser = do
+      PH.try $ do
+        P.whitespace
+        PH.symbol c
+        P.notFollowedBy $ PH.oneOf
+          [ PH.symbol c
+          , PH.symbol "="
+          ]
+        P.whitespace
+      return r
+  in
+    P.Infix parser P.AssocLeft
+
+infixRight :: Text.Text -> (a -> a -> a) -> P.Operator a
+infixRight s r =
+  let
+    parser = do
+      PH.try $ do
+        P.whitespace
+        PH.symbol s
+        P.whitespace
+      return r
+  in
+    P.Infix parser P.AssocRight
+
+conditionalTable :: [[P.Operator LGS.Expr]]
+conditionalTable =
+  [ [infixLeft' "*" LGS.Mul, infixLeft' "/" LGS.Div, infixLeft' "%" LGS.Mod]
+  , [infixLeft' "+" LGS.Add, infixLeft' "-" LGS.Sub]
+  , [infixLeft' "<<" LGS.LeftShift, infixLeft' ">>" LGS.RightShift]
+  , [infixLeft' "<" LGS.Lt, infixLeft' ">" LGS.Gt, infixLeft "<=" LGS.Lte, infixLeft ">=" LGS.Gte]
+  , [infixLeft "==" LGS.Equ, infixLeft "!=" LGS.Neq]
+  , [infixLeft'' "&" LGS.BitAnd]
+  , [infixLeft' "^" LGS.BitXor]
+  , [infixLeft'' "|" LGS.BitOr]
+  , [infixLeft "&&" LGS.And]
+  , [infixLeft "||" LGS.Or]
+  ]
+
+assignmentTable :: [[P.Operator LGS.Expr]]
+assignmentTable =
+  [ [infixRight "=" LGS.Equal]
+  , [infixRight "+=" LGS.AddAssign]
+  , [infixRight "-=" LGS.SubAssign]
+  , [infixRight "*=" LGS.MulAssign]
+  , [infixRight "/=" LGS.DivAssign]
+  , [infixRight "%=" LGS.ModAssign]
+  , [infixRight "<<=" LGS.LeftAssign]
+  , [infixRight ">>=" LGS.RightAssign]
+  , [infixRight "&=" LGS.AndAssign]
+  , [infixRight "^=" LGS.XorAssign]
+  , [infixRight "|=" LGS.OrAssign]
+  ]
+
+expressionTable :: [[P.Operator LGS.Expr]]
+expressionTable =
+  [ [infixLeft "," LGS.Sequence]
+  ]
+
+----------------------------------------------------------------------
+-- Grammar
+----------------------------------------------------------------------
 
 primaryExpression :: PH.Parser LGS.Expr
 primaryExpression =
@@ -285,7 +378,7 @@ unaryExpression = do
 
 conditionalExpression :: PH.Parser LGS.Expr
 conditionalExpression = do
-  loe <- unaryExpression
+  loe <- P.buildExpressionParser conditionalTable unaryExpression
   P.whitespace
   ter <- P.optionMaybe $ do
     PH.symbol "?"
@@ -306,15 +399,13 @@ constantExpression :: PH.Parser LGS.Expr
 constantExpression =
   conditionalExpression
 
--- TODO: implement
 assignmentExpression :: PH.Parser LGS.Expr
 assignmentExpression =
-  conditionalExpression
+  P.buildExpressionParser assignmentTable conditionalExpression
 
--- TODO: Implement
 expression :: PH.Parser LGS.Expr
 expression =
-  assignmentExpression
+  P.buildExpressionParser expressionTable assignmentExpression
 
 translationUnit :: PH.Parser LGS.TranslationUnit
 translationUnit = do

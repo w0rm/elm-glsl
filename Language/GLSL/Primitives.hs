@@ -1,7 +1,22 @@
 {-# LANGUAGE BangPatterns, DoAndIfThenElse, OverloadedStrings #-}
-module Language.GLSL.Primitives (whitespace, optionMaybe, sepBy, repeat, oneOrMore, zeroOrMore, sequence, repeating) where
+module Language.GLSL.Primitives
+  ( whitespace
+  , optionMaybe
+  , sepBy
+  , repeat
+  , oneOrMore
+  , zeroOrMore
+  , sequence
+  , repeating
+  , notFollowedBy
+  , buildExpressionParser
+  , Operator(..)
+  , Assoc(..)
+  )
+  where
 
 import Prelude hiding (repeat, sequence, length)
+import Data.Monoid ((<>))
 import qualified Data.Text as Text
 import qualified Data.Text.Array as Text
 
@@ -49,11 +64,13 @@ repeatAtLeastHelp count parser revItems =
         if count <= 0 then
           return $ reverse (item:revItems)
         else
-          fail "Failed in repeatAtLeastHelp" -- TODO: Fail with the original error!
+          -- TODO: Fail with the original error!
+          PH.deadend [RE.Keyword "Failed in repeatAtLeastHelp"]
     , if count <= 0 then
         return $ reverse revItems
       else
-        fail "Failed in repeatAtLeastHelp" -- TODO: Fail with the original error!
+        -- TODO: Fail with the original error!
+        PH.deadend [RE.Keyword "Failed in repeatAtLeastHelp"]
     ]
 
 sepBy :: PH.Parser a -> PH.Parser sep -> PH.Parser [a]
@@ -128,6 +145,15 @@ repeatingHelp start end parser revItems =
         whitespace
         repeatingHelp start end parser (item:revItems)
     ]
+
+notFollowedBy :: PH.Parser a -> PH.Parser ()
+notFollowedBy parser =
+  PH.try $ PH.oneOf
+    [ PH.try parser >> PH.deadend [RE.Keyword "Didn't expect this here"]
+    , return ()
+    ]
+
+-- WHITESPACE
 
 whitespace :: PH.Parser ()
 whitespace =
@@ -238,3 +264,111 @@ eatMultiCommentHelp array offset length row col =
       else
 
         eatMultiCommentHelp array (offset + 2) (length - 2) row (col + 1)
+
+
+-- EXPRESSION
+
+
+data Assoc
+  = AssocNone
+  | AssocLeft
+  | AssocRight
+
+-- We only use infix
+data Operator a
+  = Infix (PH.Parser (a -> a -> a)) Assoc
+  -- | Prefix (PH.Parser (a -> a))
+  -- | Postfix (PH.Parser (a -> a))
+
+type OperatorTable a = [[Operator a]]
+
+-- Based on https://hackage.haskell.org/package/parsec-3.1.11/docs/Text-Parsec-Expr.html#v:buildExpressionParser
+buildExpressionParser :: OperatorTable a -> PH.Parser a -> PH.Parser a
+buildExpressionParser operators simpleExpr =
+  foldl makeParser simpleExpr operators
+
+makeParser :: PH.Parser a -> [Operator a] -> PH.Parser a
+makeParser termParser ops =
+  let
+    (rassoc, lassoc, nassoc) =
+      foldr splitOp ([], [], []) ops
+
+    rassocOp = PH.oneOf rassoc
+    lassocOp = PH.oneOf lassoc
+    nassocOp = PH.oneOf nassoc
+
+    ambiguous assoc op =
+      PH.try $ do
+        _ <- op
+        PH.deadend [RE.Keyword $ "ambiguous use of a " <> assoc <> " associative operator"]
+
+    ambiguousRight = ambiguous "right" rassocOp
+    ambiguousLeft = ambiguous "left" lassocOp
+    ambiguousNone = ambiguous "non" nassocOp
+
+    rassocParser x =
+      PH.oneOf
+        [ do
+            f <- rassocOp
+            y <- termParser >>= rassocParser1
+            return $ f x y
+        , ambiguousLeft
+        , ambiguousNone
+        ]
+
+    rassocParser1 x =
+      PH.oneOf
+        [ rassocParser x
+        , return x
+        ]
+
+    lassocParser x =
+      PH.oneOf
+        [ do
+            f <- lassocOp
+            y <- termParser
+            lassocParser1 $ f x y
+        , ambiguousRight
+        , ambiguousNone
+        ]
+
+    lassocParser1 x =
+      PH.oneOf
+        [ lassocParser x
+        , return x
+        ]
+
+    nassocParser x = do
+      f <- nassocOp
+      y <- termParser
+      PH.oneOf
+        [ ambiguousRight
+        , ambiguousLeft
+        , ambiguousNone
+        , return $ f x y
+        ]
+  in
+    do
+      x <- termParser
+      PH.oneOf
+        [ rassocParser x
+        , lassocParser x
+        , nassocParser x
+        , return x
+        ]
+
+type InfixParser a = PH.Parser (a -> a -> a)
+type AssocParsers a = ([InfixParser a], [InfixParser a], [InfixParser a])
+
+splitOp
+  :: Operator a
+  -> AssocParsers a
+  -> AssocParsers a
+splitOp (Infix op assoc) (rassoc, lassoc, nassoc) =
+  case assoc of
+    AssocNone ->
+      (rassoc, lassoc, op:nassoc)
+    AssocLeft ->
+      (rassoc, op:lassoc, nassoc)
+    AssocRight ->
+      (op:rassoc, lassoc, nassoc)
