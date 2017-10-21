@@ -142,6 +142,8 @@ testExpressionsTrue =
   , "a ? 1 : 2"
   , "a?1:2"
   , "(a) ? (1) : (2)"
+  , "a && b"
+  , "a && b || !c && !!d"
   ]
 
 testExpressionsFalse :: [String]
