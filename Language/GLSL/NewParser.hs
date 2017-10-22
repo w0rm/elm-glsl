@@ -933,6 +933,7 @@ iterationStatement =
         PH.keyword "while"
         P.whitespace
         lparen
+        P.whitespace
         c <- condition
         P.whitespace
         rparen
