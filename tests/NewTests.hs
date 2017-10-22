@@ -20,13 +20,15 @@ import Language.GLSL.Pretty ()
 
 parsingTests :: [Test]
 parsingTests =
-  [ sampleFileTest
-  , legalExpressionsTests
+  [ legalExpressionsTests
   , illegalExpressionsTests
   , legalDeclarationsTests
   , illegalDeclarationsTests
   , legalFunctionDefinitionsTests
   , legalNumberTests
+
+  , legalCommentsTests
+  , illegalCommentsTests
 
   , TestLabel "expressions id" $ TestList $
     map expressionsId testExpressionsTrue
@@ -34,6 +36,8 @@ parsingTests =
     map declarationsId testDeclarationsTrue
   , TestLabel "function definitions id" $ TestList $
     map functionDefinitionsId testFunctionDefinitionsTrue
+
+  , sampleFileTest
   ]
 
 parsePrettyId :: LGS.TranslationUnit -> IO Bool
@@ -430,6 +434,40 @@ testFunctionDefinitionsTrue =
     \  if (intensity < 0.0)\n\
     \    return;\n\
     \}"
+  ]
+
+----------------------------------------------------------------------
+-- comments (inside simple declarations)
+----------------------------------------------------------------------
+
+legalCommentsTests :: Test
+legalCommentsTests = TestLabel "legal comments" $
+  TestList $ map (doesParse LGNP.declaration) testCommentsTrue
+
+illegalCommentsTests :: Test
+illegalCommentsTests = TestLabel "illegal comments" $
+  TestList $ map (doesNotParse LGNP.declaration) testCommentsFalse
+
+testCommentsTrue :: [String]
+testCommentsTrue =
+  [ "int a; // a comment"
+  , "int a; /* another comment */"
+  , "int a; // a comment\n"
+  , "int a; /* another comment */\n"
+  , "int a; /* another comment\non multiple\nlines.*/"
+  , "int a; /* another comment\non multiple\nlines.*/\n"
+  , "int a; /* another comment\non multiple\nlines.\n*/"
+  , "/* before */ int a;"
+  , "// before\nint a;"
+  , "int /* middle */ a;"
+  , "int/* middle */a;"
+  , "int a/* middle */;"
+  , "int a; /* not a // nested comment */"
+  ]
+
+testCommentsFalse :: [String]
+testCommentsFalse =
+  [ "int a; /* no /* nested */  comment */"
   ]
 
 ----------------------------------------------------------------------
