@@ -396,7 +396,7 @@ number =
               if word == 0x0030 {- 0 -} then
                 chompZero array offset (offset + 1) (length - 1)
               else if word == 0x002E {- . -} then
-                chompFraction array offset (offset + 1) (length - 1)
+                chompFraction array offset (offset + 1) (length - 1) False
               else
                 chompInt array offset (offset + 1) (length - 1)
           in
@@ -435,7 +435,7 @@ chompInt array startOffset offset length =
       if isDigit word then
         chompInt array startOffset (offset + 1) (length - 1)
       else if word == 0x002E {- . -} then
-        chompFraction array startOffset (offset + 1) (length - 1)
+        chompFraction array startOffset (offset + 1) (length - 1) True
       else if word == 0x0065 {- e -} || word == 0x0045 {- E -} then
         chompExponent array startOffset (offset + 1) (length - 1)
       else if word == 0x0055 {- U -} || word == 0x0075 {- u -} then
@@ -443,8 +443,8 @@ chompInt array startOffset offset length =
       else
         Right ( offset, length, readInt LGS.Decimal array startOffset offset )
 
-chompFraction :: Text.Array -> Int -> Int -> Int -> Either (Int, RE.Problem) (Int, Int, LGS.Expr)
-chompFraction array startOffset offset length =
+chompFraction :: Text.Array -> Int -> Int -> Int -> Bool -> Either (Int, RE.Problem) (Int, Int, LGS.Expr)
+chompFraction array startOffset offset length hadDigit =
   if length == 0 then
     Right (offset, length, readFloat array startOffset offset)
   else
@@ -453,12 +453,15 @@ chompFraction array startOffset offset length =
     in
       if isDigit word then
         chompFractionHelp array startOffset (offset + 1) (length - 1)
-      else if word == 0x0065 {- e -} || word == 0x0045 {- E -} then
-        chompExponent array startOffset (offset + 1) (length - 1)
-      else if word == 0x0066 {- f -} || word == 0x0046 {- F -} then
-        Right (offset + 1, length - 1, readFloat array startOffset offset)
+      else if hadDigit then
+        if word == 0x0065 {- e -} || word == 0x0045 {- E -} then
+          chompExponent array startOffset (offset + 1) (length - 1)
+        else if word == 0x0066 {- f -} || word == 0x0046 {- F -} then
+          Right (offset + 1, length - 1, readFloat array startOffset offset)
+        else
+          Right (offset, length, readFloat array startOffset offset)
       else
-        Right (offset, length, readFloat array startOffset offset)
+        Left (offset, RE.BadNumberExp)
 
 chompFractionHelp :: Text.Array -> Int -> Int -> Int -> Either (Int, RE.Problem) (Int, Int, LGS.Expr)
 chompFractionHelp array startOffset offset length =
@@ -528,7 +531,7 @@ chompZero array startOffset offset length =
         chompHexNumber array (offset + 1) (length - 1)
 
       else if word == 0x002E {- . -} then
-        chompFraction array startOffset (offset + 1) (length - 1)
+        chompFraction array startOffset (offset + 1) (length - 1) True
 
       else if isDigit word then
         chompOctNumber array offset length
