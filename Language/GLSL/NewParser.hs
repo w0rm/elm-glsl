@@ -291,6 +291,7 @@ postfixExpression = do
         return $ LGS.FunctionCall i p
     , primaryExpression
     ]
+  P.whitespace
   p <- P.repeat P.zeroOrMore $ PH.oneOf
     [ do
         lbracket
@@ -555,6 +556,7 @@ singleDeclaration = do
     o <- P.optionMaybe constantExpression
     P.whitespace
     rbracket
+    P.whitespace
     return o
   j <- P.optionMaybe $ PH.symbol "=" >> P.whitespace >> initializer
   return $ LGS.InitDecl (Text.unpack i) m j
@@ -826,19 +828,38 @@ simpleStatement :: PH.Parser LGS.Statement
 simpleStatement =
   PH.oneOf
     [ LGS.DeclarationStatement <$> declarationStatement
-    -- TODO: expression statment
+    , LGS.ExpressionStatement <$> expressionStatement
     , selectionStatement
     , switchStatement
     , LGS.CaseLabel <$> caseLabel
-    -- TODO: Add more
+    , iterationStatement
+    , jumpStatement
     ]
 
 compoundStatement :: PH.Parser LGS.Compound
 compoundStatement = LGS.Compound <$>
   P.repeating "{" "}" statement
 
+statementNoNewScope :: PH.Parser LGS.Statement
+statementNoNewScope =
+  PH.oneOf
+    [ LGS.CompoundStatement <$> compoundStatementNoNewScope
+    , simpleStatement
+    ]
+
 compoundStatementNoNewScope :: PH.Parser LGS.Compound
 compoundStatementNoNewScope = compoundStatement
+
+expressionStatement :: PH.Parser (Maybe LGS.Expr)
+expressionStatement =
+  PH.oneOf
+    [ semicolon >> return Nothing
+    , do
+        e <- expression
+        P.whitespace
+        semicolon
+        return (Just e)
+    ]
 
 selectionStatement :: PH.Parser LGS.Statement
 selectionStatement = do
@@ -856,6 +877,24 @@ selectionStatement = do
     -- TODO: If whitespace does not exist here, `{` is required.
     statement
   return $ LGS.SelectionStatement c t f
+
+-- inside selectionStatement
+-- selectionRestStatement = undefined
+
+condition :: PH.Parser LGS.Condition
+condition =
+  PH.oneOf
+    [ LGS.Condition <$> expression
+    , do
+        t <- fullySpecifiedType
+        P.whitespace
+        i <- identifier
+        P.whitespace
+        _ <- PH.symbol "="
+        P.whitespace
+        j <- initializer
+        return $ LGS.InitializedCondition t (Text.unpack i) j
+    ]
 
 switchStatement :: PH.Parser LGS.Statement
 switchStatement = do
@@ -885,4 +924,84 @@ caseLabel =
         P.whitespace
         colon
         return LGS.Default
+    ]
+
+iterationStatement :: PH.Parser LGS.Statement
+iterationStatement =
+  PH.oneOf
+    [ do
+        PH.keyword "while"
+        P.whitespace
+        lparen
+        c <- condition
+        P.whitespace
+        rparen
+        P.whitespace
+        s <- statementNoNewScope
+        return $ LGS.While c s
+    , do
+        PH.keyword "do"
+        P.whitespace
+        s <- statement
+        P.whitespace
+        PH.keyword "while"
+        P.whitespace
+        lparen
+        P.whitespace
+        e <- expression
+        P.whitespace
+        rparen
+        P.whitespace
+        semicolon
+        return $ LGS.DoWhile s e
+    , do
+        PH.keyword "for"
+        P.whitespace
+        lparen
+        P.whitespace
+        i <- forInitStatement
+        P.whitespace
+        c <- P.optionMaybe $ do
+          cc <- condition
+          P.whitespace
+          return cc
+        semicolon
+        P.whitespace
+        e <- P.optionMaybe $ do
+          ee <- expression
+          P.whitespace
+          return ee
+        rparen
+        P.whitespace
+        s <- statementNoNewScope
+        return $ LGS.For i c e s
+    ]
+
+forInitStatement :: PH.Parser (Either (Maybe LGS.Expr) LGS.Declaration)
+forInitStatement =
+  PH.oneOf
+    [ Left <$> expressionStatement
+    , Right <$> declarationStatement
+    ]
+
+-- inside iterationStatement
+-- conditionOp = undefined
+
+-- inside iterationStatement
+-- forRestStatement = undefined
+
+jumpStatement :: PH.Parser LGS.Statement
+jumpStatement =
+  PH.oneOf
+    [ PH.keyword "continue" >> P.whitespace >> semicolon >> return LGS.Continue
+    , PH.keyword "break" >> P.whitespace >> semicolon >> return LGS.Break
+    , PP.try (PH.keyword "return" >> P.whitespace >> semicolon) >> return (LGS.Return Nothing)
+    , do
+        PH.keyword "return"
+        P.whitespace
+        e <- expression
+        P.whitespace
+        semicolon
+        return (LGS.Return $ Just e)
+    , PH.keyword "discard" >> P.whitespace >> semicolon >> return LGS.Discard
     ]
