@@ -668,6 +668,7 @@ typeSpecifier =
 typeSpecifierNoPrecision :: PH.Parser LGS.TypeSpecifierNoPrecision
 typeSpecifierNoPrecision = do
   s <- typeSpecifierNonArray
+  P.whitespace
   PH.oneOf
     [ PH.try $ do
         lbracket
