@@ -6,9 +6,7 @@ import qualified Data.Text as Text
 import qualified Data.Text.Unsafe as Text
 import qualified Data.Set as Set
 import qualified Data.Char as Char
-import qualified GHC.Float as Float
 
-import qualified AST.Literal as AL
 import qualified Parse.Helpers as PH
 import qualified Reporting.Annotation as RA
 import qualified Reporting.Error.Syntax as RE

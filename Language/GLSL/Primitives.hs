@@ -377,7 +377,7 @@ number =
       let
         !word = Text.unsafeIndex array offset
       in
-        if not (isDigit word) && not (word == 0x002E {- . -}) then
+        if not (isDigit word) && word /= 0x002E {- . -} then
           eerr PH.noError
 
         else
@@ -539,7 +539,7 @@ chompHexNumber array offset length =
   if hexNumber == -1 then
     Left ( newOffset, RE.BadNumberHex )
   else
-    Right ( newOffset, newLength, LGS.IntConstant LGS.Hexadecimal $ toInteger $ hexNumber )
+    Right ( newOffset, newLength, LGS.IntConstant LGS.Hexadecimal $ toInteger hexNumber )
 
 
 chompOctNumber :: Text.Array -> Int -> Int -> Either (Int, RE.Problem) (Int, Int, LGS.Expr)
@@ -551,7 +551,7 @@ chompOctNumber array offset length =
   if octNumber == -1 then
     Left ( newOffset, RE.BadNumberHex )
   else
-    Right ( newOffset, newLength, LGS.IntConstant LGS.Octal $ toInteger $ octNumber )
+    Right ( newOffset, newLength, LGS.IntConstant LGS.Octal $ toInteger octNumber )
 
 
 -- NUMBER HELPERS
