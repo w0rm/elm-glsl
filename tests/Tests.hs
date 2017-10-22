@@ -1,4 +1,4 @@
-module Tests (parsingTests) where
+module Tests (parsingTests, pass) where
 
 import qualified Text.ParserCombinators.Parsec as TPP
 import Text.PrettyPrint.HughesPJClass (prettyShow, Pretty)
