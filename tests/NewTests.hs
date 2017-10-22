@@ -29,10 +29,17 @@ parsingTests =
   , legalNumberTests
   ]
 
-parsePrettyId :: LGS.TranslationUnit -> Bool
-parsePrettyId e = case pass LGNP.translationUnit (TPH.prettyShow e) of
-  Left _ -> False
-  Right e' -> e == e'
+parsePrettyId :: LGS.TranslationUnit -> IO Bool
+parsePrettyId e =
+  let
+    source = TPH.prettyShow e
+  in
+    case pass LGNP.translationUnit source of
+      Left err -> do
+        putStrLn $ showError err $ Text.pack source
+        return False
+      Right e' ->
+        return $ e == e'
 
 -- Just check if the parser passes of fails
 pass :: PH.Parser a -> String -> Either (RA.Located RE.Error) a
@@ -76,7 +83,7 @@ sampleFileTest = TestLabel "Parse/Pretty glsl/sample-01.glsl test" . TestCase . 
       putStrLn $ "parse error: \n" ++ showError err content
       return False
     Right ast ->
-      return $ parsePrettyId ast
+      parsePrettyId ast
 
 showError :: RA.Located RE.Error -> Text.Text -> String
 showError (RA.A region err) source =
