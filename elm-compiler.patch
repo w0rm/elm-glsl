@@ -1,5 +1,5 @@
 diff --git a/elm-compiler.cabal b/elm-compiler.cabal
-index 67a1a8b..470f138 100644
+index 67a1a8bf..470f1380 100644
 --- a/elm-compiler.cabal
 +++ b/elm-compiler.cabal
 @@ -58,9 +58,8 @@ Library
@@ -14,7 +14,7 @@ index 67a1a8b..470f138 100644
          AST.Effects,
          AST.Exposing,
 diff --git a/src/Parse/Helpers.hs b/src/Parse/Helpers.hs
-index e36c536..3fe973b 100644
+index e36c536f..3fe973b2 100644
 --- a/src/Parse/Helpers.hs
 +++ b/src/Parse/Helpers.hs
 @@ -14,7 +14,7 @@ module Parse.Helpers
@@ -27,10 +27,10 @@ index e36c536..3fe973b 100644
  import qualified Reporting.Annotation as A
  import qualified Reporting.Error.Syntax as E
 diff --git a/src/Parse/Primitives.hs b/src/Parse/Primitives.hs
-index 0118ec6..1efd28f 100644
+index 0118ec6d..ab66741e 100644
 --- a/src/Parse/Primitives.hs
 +++ b/src/Parse/Primitives.hs
-@@ -1,7 +1,12 @@
+@@ -1,7 +1,13 @@
  {-# OPTIONS_GHC -Wall -fno-warn-unused-do-bind #-}
  {-# LANGUAGE BangPatterns, Rank2Types, UnboxedTuples, OverloadedStrings #-}
  module Parse.Primitives
@@ -39,6 +39,7 @@ index 0118ec6..1efd28f 100644
 +  , State(..)
 +  , noError
 +  , peek
++  , peekChar
 +  , varPrimHelp
 +  , copyText
    , run, runAt
