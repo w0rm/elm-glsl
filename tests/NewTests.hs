@@ -27,6 +27,13 @@ parsingTests =
   , illegalDeclarationsTests
   , legalFunctionDefinitionsTests
   , legalNumberTests
+
+  , TestLabel "expressions id" $ TestList $
+    map expressionsId testExpressionsTrue
+  , TestLabel "declarations id" $ TestList $
+    map declarationsId testDeclarationsTrue
+  , TestLabel "function definitions id" $ TestList $
+    map functionDefinitionsId testFunctionDefinitionsTrue
   ]
 
 parsePrettyId :: LGS.TranslationUnit -> IO Bool
@@ -40,6 +47,35 @@ parsePrettyId e =
         return False
       Right e' ->
         return $ e == e'
+
+testId :: (TPH.Pretty a, Eq a) => String -> PH.Parser a -> String -> Test
+testId name parser str =
+  TestLabel (name ++ ": " ++ str) . TestCase . assert $ do
+    ast <- case pass parser str of
+      Right a ->
+        return a
+      Left err -> do
+        putStrLn $ showError err (Text.pack str)
+        error "does not even parse the original string"
+    let source = TPH.prettyShow ast
+    case pass parser source of
+      Left err -> do
+        putStrLn $ showError err (Text.pack source)
+        return False
+      Right e ->
+        return $ ast == e
+
+expressionsId :: String -> Test
+expressionsId =
+  testId "expressionsId" LGNP.expression
+
+declarationsId :: String -> Test
+declarationsId =
+  testId "declarationsId" LGNP.declaration
+
+functionDefinitionsId :: String -> Test
+functionDefinitionsId =
+  testId "functionDefinitionsId" LGNP.functionDefinition
 
 -- Just check if the parser passes of fails
 pass :: PH.Parser a -> String -> Either (RA.Located RE.Error) a
@@ -76,14 +112,15 @@ doesNotParse p str =
 
 
 sampleFileTest :: Test
-sampleFileTest = TestLabel "Parse/Pretty glsl/sample-01.glsl test" . TestCase . assert $ do
-  content <- TIO.readFile "glsl/sample-01.glsl"
-  case LGNP.parse content of
-    Left err -> do
-      putStrLn $ "parse error: \n" ++ showError err content
-      return False
-    Right ast ->
-      parsePrettyId ast
+sampleFileTest =
+  TestLabel "Parse/Pretty glsl/sample-01.glsl test" . TestCase . assert $ do
+    content <- TIO.readFile "glsl/sample-01.glsl"
+    case LGNP.parse content of
+      Left err -> do
+        putStrLn $ "parse error: \n" ++ showError err content
+        return False
+      Right ast ->
+        parsePrettyId ast
 
 showError :: RA.Located RE.Error -> Text.Text -> String
 showError (RA.A region err) source =
