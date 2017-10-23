@@ -573,9 +573,16 @@ readInt constantKind array startOffset endOffset =
 {-# INLINE readFloat #-}
 readFloat :: Text.Array -> Int -> Int -> LGS.Expr
 readFloat array startOffset endOffset =
-  LGS.FloatConstant $ read $ Text.unpack $
-    Text.Text array startOffset (endOffset - startOffset)
-
+  LGS.FloatConstant
+    $ read
+    $ Text.unpack
+    -- fix "1.e1"
+    $ Text.replace ".e" "e"
+    -- fix ".0"
+    $ (\t -> if Text.take 1 t == "." then Text.append "0" t else t)
+    -- fix "0."
+    $ (\t -> if Text.takeEnd 1 t == "." then Text.append t "0" else t)
+    $ Text.Text array startOffset (endOffset - startOffset)
 
 
 -- CHOMP HEX
