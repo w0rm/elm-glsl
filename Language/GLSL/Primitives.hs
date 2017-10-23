@@ -54,28 +54,21 @@ repeatExactlyHelp count parser revItems =
   else do
     item <- parser
     repeatExactlyHelp (count - 1) parser (item:revItems)
-    -- TODO: Fail with a better error
 
--- TODO: Remove duplication
 repeatAtLeastHelp :: Int -> PH.Parser a -> [a] -> PH.Parser [a]
 repeatAtLeastHelp count parser revItems =
-  PH.oneOf
-    [ PH.try $ do
-        item <- parser
-        repeatAtLeastHelp (count - 1) parser (item:revItems)
-    , do
-        item <- parser
-        if count <= 0 then
-          return $ reverse (item:revItems)
-        else
-          -- TODO: Fail with the original error!
-          PH.deadend [RE.Keyword "Failed in repeatAtLeastHelp"]
-    , if count <= 0 then
-        return $ reverse revItems
-      else
-        -- TODO: Fail with the original error!
-        PH.deadend [RE.Keyword "Failed in repeatAtLeastHelp"]
-    ]
+  let
+    recurse = do
+      item <- parser
+      repeatAtLeastHelp (count - 1) parser (item:revItems)
+  in
+    if count <= 0 then
+      PH.oneOf
+        [ recurse
+        , return $ reverse revItems
+        ]
+    else
+      recurse
 
 sepBy :: PH.Parser a -> PH.Parser sep -> PH.Parser [a]
 sepBy parser sep =
@@ -362,10 +355,7 @@ makeParser termParser ops =
 type InfixParser a = PH.Parser (a -> a -> a)
 type AssocParsers a = ([InfixParser a], [InfixParser a], [InfixParser a])
 
-splitOp
-  :: Operator a
-  -> AssocParsers a
-  -> AssocParsers a
+splitOp :: Operator a -> AssocParsers a -> AssocParsers a
 splitOp (Infix op assoc) (rassoc, lassoc, nassoc) =
   case assoc of
     AssocNone ->
@@ -387,7 +377,7 @@ number =
       let
         !word = Text.unsafeIndex array offset
       in
-        if not (isDigit word) && not (word == 0x002E {- . -}) then
+        if not (isDigit word) && word /= 0x002E {- . -} then
           eerr PH.noError
 
         else
@@ -549,7 +539,7 @@ chompHexNumber array offset length =
   if hexNumber == -1 then
     Left ( newOffset, RE.BadNumberHex )
   else
-    Right ( newOffset, newLength, LGS.IntConstant LGS.Hexadecimal $ toInteger $ hexNumber )
+    Right ( newOffset, newLength, LGS.IntConstant LGS.Hexadecimal $ toInteger hexNumber )
 
 
 chompOctNumber :: Text.Array -> Int -> Int -> Either (Int, RE.Problem) (Int, Int, LGS.Expr)
@@ -561,7 +551,7 @@ chompOctNumber array offset length =
   if octNumber == -1 then
     Left ( newOffset, RE.BadNumberHex )
   else
-    Right ( newOffset, newLength, LGS.IntConstant LGS.Octal $ toInteger $ octNumber )
+    Right ( newOffset, newLength, LGS.IntConstant LGS.Octal $ toInteger octNumber )
 
 
 -- NUMBER HELPERS

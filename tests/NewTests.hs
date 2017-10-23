@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DoAndIfThenElse, OverloadedStrings #-}
 module NewTests (parsingTests) where
 
 import Test.HUnit (Test(..), assert, assertBool)
@@ -18,15 +18,32 @@ import qualified Language.GLSL.Primitives as P
 import qualified Language.GLSL.Syntax as LGS
 import Language.GLSL.Pretty ()
 
+import qualified Language.GLSL.Parser as LGP
+import qualified Tests
+
 parsingTests :: [Test]
 parsingTests =
-  [ sampleFileTest
-  , legalExpressionsTests
+  [ legalExpressionsTests
   , illegalExpressionsTests
+  , compareExpressionsTests
   , legalDeclarationsTests
   , illegalDeclarationsTests
+  , compareDeclarationsTests
   , legalFunctionDefinitionsTests
+  , compareFunctionDefinitionsTests
+  , legalCommentsTests
+  , illegalCommentsTests
+  , compareCommentsTests
   , legalNumberTests
+
+  , TestLabel "expressions id" $ TestList $
+    map expressionsId testExpressionsTrue
+  , TestLabel "declarations id" $ TestList $
+    map declarationsId testDeclarationsTrue
+  , TestLabel "function definitions id" $ TestList $
+    map functionDefinitionsId testFunctionDefinitionsTrue
+
+  , sampleFileTest
   ]
 
 parsePrettyId :: LGS.TranslationUnit -> IO Bool
@@ -40,6 +57,35 @@ parsePrettyId e =
         return False
       Right e' ->
         return $ e == e'
+
+testId :: (TPH.Pretty a, Eq a) => String -> PH.Parser a -> String -> Test
+testId name parser str =
+  TestLabel (name ++ ": " ++ str) . TestCase . assert $ do
+    ast <- case pass parser str of
+      Right a ->
+        return a
+      Left err -> do
+        putStrLn $ showError err (Text.pack str)
+        error "does not even parse the original string"
+    let source = TPH.prettyShow ast
+    case pass parser source of
+      Left err -> do
+        putStrLn $ showError err (Text.pack source)
+        return False
+      Right e ->
+        return $ ast == e
+
+expressionsId :: String -> Test
+expressionsId =
+  testId "expressionsId" LGNP.expression
+
+declarationsId :: String -> Test
+declarationsId =
+  testId "declarationsId" LGNP.declaration
+
+functionDefinitionsId :: String -> Test
+functionDefinitionsId =
+  testId "functionDefinitionsId" LGNP.functionDefinition
 
 -- Just check if the parser passes of fails
 pass :: PH.Parser a -> String -> Either (RA.Located RE.Error) a
@@ -75,15 +121,40 @@ doesNotParse p str =
   TestCase . assertBool ("doesNotParse: " ++ str) . isLeft . pass p $ str
 
 
-sampleFileTest :: Test
-sampleFileTest = TestLabel "Parse/Pretty glsl/sample-01.glsl test" . TestCase . assert $ do
-  content <- TIO.readFile "glsl/sample-01.glsl"
-  case LGNP.parse content of
-    Left err -> do
-      putStrLn $ "parse error: \n" ++ showError err content
+compareParse :: (TPH.Pretty a, Eq a) => PH.Parser a -> LGP.P a -> String -> Test
+compareParse newParser oldParser str =
+  TestLabel ("compareParse: " ++ str) . TestCase . assert $ do
+    newAST <- case pass newParser str of
+      Right a ->
+        return a
+      Left err -> do
+        putStrLn $ showError err $ Text.pack str
+        error "New parser failed parsing"
+    oldAST <- case Tests.pass oldParser str of
+      Right a ->
+        return a
+      Left err -> do
+        print err
+        error "Old parser failed parsing"
+    if newAST == oldAST then
+      return True
+    else do
+      putStrLn "New parser's result:"
+      putStrLn $ TPH.prettyShow newAST
+      putStrLn "Old parser's result:"
+      putStrLn $ TPH.prettyShow oldAST
       return False
-    Right ast ->
-      parsePrettyId ast
+
+sampleFileTest :: Test
+sampleFileTest =
+  TestLabel "Parse/Pretty glsl/sample-01.glsl test" . TestCase . assert $ do
+    content <- TIO.readFile "glsl/sample-01.glsl"
+    case LGNP.parse content of
+      Left err -> do
+        putStrLn $ "parse error: \n" ++ showError err content
+        return False
+      Right ast ->
+        parsePrettyId ast
 
 showError :: RA.Located RE.Error -> Text.Text -> String
 showError (RA.A region err) source =
@@ -100,6 +171,10 @@ legalExpressionsTests = TestLabel "legal expressions" $
 illegalExpressionsTests :: Test
 illegalExpressionsTests = TestLabel "illegal expressions" $
   TestList $ map (doesNotParse LGNP.expression) testExpressionsFalse
+
+compareExpressionsTests :: Test
+compareExpressionsTests = TestLabel "compare expressions" $
+  TestList $ map (compareParse LGNP.expression LGP.expression) testExpressionsTrue
 
 testExpressionsTrue :: [String]
 testExpressionsTrue =
@@ -181,6 +256,10 @@ legalDeclarationsTests = TestLabel "legal declarations" $
 illegalDeclarationsTests :: Test
 illegalDeclarationsTests = TestLabel "illegal declarations" $
   TestList $ map (doesNotParse LGNP.declaration) testDeclarationsFalse
+
+compareDeclarationsTests :: Test
+compareDeclarationsTests = TestLabel "compare declarations" $
+  TestList $ map (compareParse LGNP.declaration LGP.declaration) testDeclarationsTrue
 
 testDeclarationsTrue :: [String]
 testDeclarationsTrue =
@@ -383,6 +462,10 @@ legalFunctionDefinitionsTests :: Test
 legalFunctionDefinitionsTests = TestLabel "legal function definition" $
   TestList $ map (doesParse LGNP.functionDefinition) testFunctionDefinitionsTrue
 
+compareFunctionDefinitionsTests :: Test
+compareFunctionDefinitionsTests = TestLabel "compare function definitions" $
+  TestList $ map (compareParse LGNP.functionDefinition LGP.functionDefinition) testFunctionDefinitionsTrue
+
 testFunctionDefinitionsTrue :: [String]
 testFunctionDefinitionsTrue =
   [ "void main ()\n\
@@ -393,6 +476,44 @@ testFunctionDefinitionsTrue =
     \  if (intensity < 0.0)\n\
     \    return;\n\
     \}"
+  ]
+
+----------------------------------------------------------------------
+-- comments (inside simple declarations)
+----------------------------------------------------------------------
+
+legalCommentsTests :: Test
+legalCommentsTests = TestLabel "legal comments" $
+  TestList $ map (doesParse LGNP.declaration) testCommentsTrue
+
+illegalCommentsTests :: Test
+illegalCommentsTests = TestLabel "illegal comments" $
+  TestList $ map (doesNotParse LGNP.declaration) testCommentsFalse
+
+compareCommentsTests :: Test
+compareCommentsTests = TestLabel "compare comments" $
+  TestList $ map (compareParse LGNP.declaration LGP.declaration) testCommentsTrue
+
+testCommentsTrue :: [String]
+testCommentsTrue =
+  [ "int a; // a comment"
+  , "int a; /* another comment */"
+  , "int a; // a comment\n"
+  , "int a; /* another comment */\n"
+  , "int a; /* another comment\non multiple\nlines.*/"
+  , "int a; /* another comment\non multiple\nlines.*/\n"
+  , "int a; /* another comment\non multiple\nlines.\n*/"
+  , "/* before */ int a;"
+  , "// before\nint a;"
+  , "int /* middle */ a;"
+  , "int/* middle */a;"
+  , "int a/* middle */;"
+  , "int a; /* not a // nested comment */"
+  ]
+
+testCommentsFalse :: [String]
+testCommentsFalse =
+  [ "int a; /* no /* nested */  comment */"
   ]
 
 ----------------------------------------------------------------------
