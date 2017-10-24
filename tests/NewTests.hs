@@ -44,6 +44,7 @@ parsingTests =
     map functionDefinitionsId testFunctionDefinitionsTrue
 
   , sampleFileTest
+  , compareFileTest
   ]
 
 parsePrettyId :: LGS.TranslationUnit -> IO Bool
@@ -124,27 +125,31 @@ doesNotParse p str =
 
 compareParse :: (TPH.Pretty a, Eq a) => PH.Parser a -> LGP.P a -> String -> Test
 compareParse newParser oldParser str =
-  TestLabel ("compareParse: " ++ str) . TestCase . assert $ do
-    newAST <- case pass newParser str of
-      Right a ->
-        return a
-      Left err -> do
-        putStrLn $ showError err $ Text.pack str
-        error "New parser failed parsing"
-    oldAST <- case Tests.pass oldParser str of
-      Right a ->
-        return a
-      Left err -> do
-        print err
-        error "Old parser failed parsing"
-    if newAST == oldAST then
-      return True
-    else do
-      putStrLn "New parser's result:"
-      putStrLn $ TPH.prettyShow newAST
-      putStrLn "Old parser's result:"
-      putStrLn $ TPH.prettyShow oldAST
-      return False
+  TestLabel ("compareParse: " ++ str) . TestCase . assert $
+    compareASTs newParser oldParser str
+
+compareASTs :: (TPH.Pretty a, Eq a) => PH.Parser a -> LGP.P a -> String -> IO Bool
+compareASTs newParser oldParser str = do
+  newAST <- case pass newParser str of
+    Right a ->
+      return a
+    Left err -> do
+      putStrLn $ showError err $ Text.pack str
+      error "New parser failed parsing"
+  oldAST <- case Tests.pass oldParser str of
+    Right a ->
+      return a
+    Left err -> do
+      print err
+      error "Old parser failed parsing"
+  if newAST == oldAST then
+    return True
+  else do
+    putStrLn "New parser's result:"
+    putStrLn $ TPH.prettyShow newAST
+    putStrLn "Old parser's result:"
+    putStrLn $ TPH.prettyShow oldAST
+    return False
 
 sampleFileTest :: Test
 sampleFileTest =
@@ -156,6 +161,12 @@ sampleFileTest =
         return False
       Right ast ->
         parsePrettyId ast
+
+compareFileTest :: Test
+compareFileTest =
+  TestLabel "Compare glsl/sample-01.glsl test" . TestCase . assert $ do
+    content <- readFile "glsl/sample-01.glsl"
+    compareASTs LGNP.translationUnit LGP.translationUnit content
 
 showError :: RA.Located RE.Error -> Text.Text -> String
 showError (RA.A region err) source =
