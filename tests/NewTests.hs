@@ -94,6 +94,7 @@ pass p str =
     parser = do
       P.whitespace
       r <- p
+      P.whitespace
       PH.endOfFile
       return r
   in
