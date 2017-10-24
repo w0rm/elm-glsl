@@ -252,7 +252,7 @@ eatMultiCommentHelp array offset length row col =
 
       else if word == 0x002A {- * -} && length > 1 && Text.unsafeIndex array (offset + 1) == 0x002F {- / -} then
 
-        eatMultiCommentHelp array (offset + 2) (length - 2) row (col + 2)
+        Right ( offset + 2, length - 2, row, col + 2 )
 
       else if word < 0xD800 || 0xDBFF < word then
 
