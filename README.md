@@ -1,9 +1,15 @@
 # elm-glsl
 
-The package elm-glsl is a Haskell library for the
-the parsing of GLSL 1.50 code for the Elm compiler.
+The package elm-glsl is a Haskell code for the the parsing of GLSL ES code for the Elm compiler.
 
-It is based on [language-glsl](https://github.com/noteed/language-glsl) by Vo Minh Thu, but uses a parser from [elm-compiler](https://github.com/elm-lang/elm-compiler) instead of Parsec.
+It is based on awesome [language-glsl](https://github.com/noteed/language-glsl) by Vo Minh Thu, but uses a parser from [elm-compiler](https://github.com/elm-lang/elm-compiler) instead of Parsec.
+
+## Disclaimer
+
+This is an experiment to replace language-glsl in the Elm compiler code, in order to:
+
+* drop the Parsec dependency from the compiler;
+* extend the functionality to support custom requirements.
 
 ## Setup
 
