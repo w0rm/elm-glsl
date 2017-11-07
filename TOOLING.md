@@ -45,7 +45,7 @@ glslify addresses the modularization, but it doesn't verify the correctness of g
 
 ### In Browser Editing
 
-Editing shaders in a browser not only provides fast visual feedback, but also verifies the correctness of syntax and highlights compilation errors. There is a bunch of online editors for the fragment shader’s code, e.g. [Shadertoy](https://www.shadertoy.com/), [GLSL Sandbox](http://glslsandbox.com/). Firefox Developer Tools include [Shader Editor](https://developer.mozilla.org/en-US/docs/Tools/Shader_Editor) that may be used to edit already linked vertext and fragment shaders in the running application.
+Editing shaders in a browser not only provides fast visual feedback, but also verifies the correctness of syntax and highlights compilation errors. There is a bunch of online editors for the fragment shader’s code, e.g. [Shadertoy](https://www.shadertoy.com/), [GLSL Sandbox](http://glslsandbox.com/), [Shdr](http://shdr.bkcore.com/). Firefox Developer Tools include [Shader Editor](https://developer.mozilla.org/en-US/docs/Tools/Shader_Editor) that may be used to edit already linked vertext and fragment shaders in the running application. There is also [Shader Editor Extension](https://github.com/spite/ShaderEditorExtension) that adds live editing support to Google Chrome.
 
 Being able to live edit shaders is powerful, but is only available in the browser, meaning you cannot get the feedback from your editor of choice.
 
